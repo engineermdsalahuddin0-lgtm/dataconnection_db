@@ -1,0 +1,19 @@
+{
+  "name": "db-explorer",
+  "version": "1.0.0",
+  "description": "Connect to a remote MySQL or SQL Server and browse its databases and tables",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mssql": "^12.7.9",
+    "mysql2": "^3.11.5"
+  }
+}

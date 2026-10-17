@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DB Explorer</title>
+  <style>
+    :root {
+      --bg: #f4f6fa;
+      --panel: #ffffff;
+      --text: #1d2433;
+      --muted: #667085;
+      --border: #dde2ea;
+      --accent: #2f6fed;
+      --accent-hover: #2459c4;
+      --accent-soft: #e8efff;
+      --danger: #c2372f;
+      --danger-soft: #fdecea;
+      --ok: #1f8a4c;
+      --ok-soft: #e6f5ec;
+      --radius: 10px;
+      --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12151c;
+        --panel: #1b1f29;
+        --text: #e6e9ef;
+        --muted: #949cad;
+        --border: #2c3240;
+        --accent: #5b8cff;
+        --accent-hover: #7aa2ff;
+        --accent-soft: #232d45;
+        --danger: #ff7a70;
+        --danger-soft: #3a1f1e;
+        --ok: #5ccf8a;
+        --ok-soft: #1a3326;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header { padding: 28px 16px 8px; max-width: 1100px; margin: 0 auto; }
+    header h1 { margin: 0; font-size: 22px; }
+    header p { margin: 4px 0 0; color: var(--muted); }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+    .panel h2 { margin: 0 0 12px; font-size: 15px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+
+    label { display: block; font-weight: 600; font-size: 13px; margin: 12px 0 4px; }
+    label .hint { font-weight: 400; color: var(--muted); }
+    input, select {
+      width: 100%;
+      padding: 9px 11px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    .check { display: flex; align-items: center; gap: 8px; font-weight: 400; margin-top: 12px; }
+    .check input { width: auto; }
+    .hidden { display: none !important; }
+
+    button {
+      margin-top: 18px;
+      width: 100%;
+      padding: 11px;
+      font: inherit;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:disabled { opacity: .6; cursor: progress; }
+
+    .status { margin-top: 14px; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
+    .status.ok { background: var(--ok-soft); color: var(--ok); }
+    .status.err { background: var(--danger-soft); color: var(--danger); }
+    .status small { display: block; margin-top: 4px; font-family: var(--mono); font-size: 12px; opacity: .85; word-break: break-word; }
+
+    .results { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+    @media (max-width: 640px) { .results { grid-template-columns: 1fr; } }
+
+    .filter { margin-bottom: 10px; }
+    .db-list { list-style: none; margin: 0; padding: 0; max-height: 520px; overflow: auto; }
+    .db-list li button {
+      margin: 0 0 4px;
+      text-align: left;
+      font-weight: 500;
+      color: var(--text);
+      background: transparent;
+      border: 1px solid transparent;
+      padding: 8px 10px;
+      font-family: var(--mono);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .db-list li button:hover { background: var(--accent-soft); }
+    .db-list li button[aria-current="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+    .empty { color: var(--muted); font-size: 14px; padding: 20px 0; text-align: center; }
+    .meta { color: var(--muted); font-size: 13px; margin: -6px 0 12px; }
+
+    .table-wrap { overflow: auto; max-height: 560px; border: 1px solid var(--border); border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { position: sticky; top: 0; background: var(--panel); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    td.num { color: var(--muted); width: 48px; }
+    td.name { font-family: var(--mono); }
+    tr:last-child td { border-bottom: 0; }
+    .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--accent-soft); color: var(--accent); }
+    .badge.view { background: var(--ok-soft); color: var(--ok); }
+    .badge.pk { background: #fff4d6; color: #9a6700; }
+    @media (prefers-color-scheme: dark) { .badge.pk { background: #3a3016; color: #f2c661; } }
+
+    .field-note { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+    .stack { display: grid; gap: 16px; align-content: start; min-width: 0; }
+
+    tbody.clickable tr { cursor: pointer; }
+    tbody.clickable tr:hover td { background: var(--accent-soft); }
+    tbody.clickable tr[aria-selected="true"] td { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+    .stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
+    .stat { padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; min-width: 110px; }
+    .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+    .stat span { font-size: 12px; color: var(--muted); }
+    td.mono { font-family: var(--mono); font-size: 13px; }
+    td.muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>DB Explorer</h1>
+    <p>Connect to a MySQL or SQL Server instance and browse its databases and tables.</p>
+  </header>
+
+  <main>
+    <!-- Connection form -->
+    <section class="panel">
+      <h2>Connection</h2>
+      <form id="connect-form" novalidate>
+        <label for="engine">Database engine</label>
+        <select id="engine" name="engine">
+          <option value="mysql">MySQL</option>
+          <option value="mssql">SQL Server (MSSQL)</option>
+        </select>
+
+        <label for="host">Host / IP address</label>
+        <input id="host" name="host" placeholder="e.g. 127.34.7.10" required autocomplete="off" />
+
+        <label for="port">Port <span class="hint">(optional)</span></label>
+        <input id="port" name="port" type="number" min="1" max="65535" placeholder="3306" />
+
+        <label for="user">Username</label>
+        <input id="user" name="user" required autocomplete="username" />
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" />
+
+        <label for="database">Database name <span class="hint">(optional)</span></label>
+        <input id="database" name="database" placeholder="Leave empty to list all databases" autocomplete="off" />
+        <p class="field-note">If you know the name, tables load directly. This works even if the user can't list databases.</p>
+
+        <label class="check hidden" id="encrypt-row">
+          <input type="checkbox" id="encrypt" name="encrypt" /> Encrypt connection (TLS)
+        </label>
+        <label class="check">
+          <input type="checkbox" id="hideSystem" name="hideSystem" /> Hide system databases
+        </label>
+
+        <button type="submit" id="connect-btn">Connect &amp; Fetch Databases</button>
+      </form>
+      <div id="status" class="status hidden" role="status"></div>
+    </section>
+
+    <!-- Results -->
+    <section class="results">
+      <div class="panel">
+        <h2>Databases</h2>
+        <input id="db-filter" class="filter hidden" placeholder="Filter databases…" />
+        <ul id="db-list" class="db-list"></ul>
+        <p id="db-empty" class="empty">Connect to a server to list its databases.</p>
+      </div>
+
+      <div class="stack">
+        <div class="panel">
+          <h2 id="tables-title">Tables</h2>
+          <p id="tables-meta" class="meta hidden"></p>
+          <div id="tables-wrap" class="table-wrap hidden">
+            <table>
+              <thead><tr><th>#</th><th>Schema</th><th>Table name</th><th>Type</th></tr></thead>
+              <tbody id="tables-body" class="clickable"></tbody>
+            </table>
+          </div>
+          <p id="tables-empty" class="empty">Select a database to see its tables.</p>
+        </div>
+
+        <div class="panel hidden" id="detail-panel">
+          <h2 id="detail-title">Table details</h2>
+          <div id="detail-stats" class="stats hidden"></div>
+          <div id="detail-wrap" class="table-wrap hidden">
+            <table>
+              <thead><tr><th>#</th><th>Column</th><th>Data type</th><th>Null</th><th>Key</th><th>Default</th></tr></thead>
+              <tbody id="detail-body"></tbody>
+            </table>
+          </div>
+          <p id="detail-empty" class="empty">Click a table to see its columns.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const DEFAULT_PORTS = { mysql: 3306, mssql: 1433 };
+    const $ = (id) => document.getElementById(id);
+
+    const form = $('connect-form');
+    const engineEl = $('engine');
+    const portEl = $('port');
+    const dbInput = $('database');
+    const statusEl = $('status');
+    const btn = $('connect-btn');
+    const dbList = $('db-list');
+    const dbEmpty = $('db-empty');
+    const dbFilter = $('db-filter');
+    const tablesBody = $('tables-body');
+    const tablesWrap = $('tables-wrap');
+    const tablesEmpty = $('tables-empty');
+    const tablesMeta = $('tables-meta');
+    const tablesTitle = $('tables-title');
+    const detailPanel = $('detail-panel');
+    const detailTitle = $('detail-title');
+    const detailStats = $('detail-stats');
+    const detailWrap = $('detail-wrap');
+    const detailBody = $('detail-body');
+    const detailEmpty = $('detail-empty');
+
+    // Credentials used for the last successful connect; reused for later requests.
+    let session = null;
+    let databases = [];
+    let tablesRequestId = 0;
+    let detailRequestId = 0;
+
+    const buttonLabel = () => dbInput.value.trim() ? 'Connect & Fetch Tables' : 'Connect & Fetch Databases';
+
+    engineEl.addEventListener('change', () => {
+      portEl.placeholder = DEFAULT_PORTS[engineEl.value];
+      $('encrypt-row').classList.toggle('hidden', engineEl.value !== 'mssql');
+    });
+    dbInput.addEventListener('input', () => { if (!btn.disabled) btn.textContent = buttonLabel(); });
+
+    function readForm() {
+      return {
+        engine: engineEl.value,
+        host: $('host').value.trim(),
+        port: portEl.value.trim() || DEFAULT_PORTS[engineEl.value],
+        user: $('user').value.trim(),
+        password: $('password').value,
+        encrypt: $('encrypt').checked,
+        hideSystem: $('hideSystem').checked,
+      };
+    }
+
+    function showStatus(kind, message, detail) {
+      statusEl.className = 'status ' + kind;
+      statusEl.textContent = message;
+      if (detail && detail !== message) {
+        const small = document.createElement('small');
+        small.textContent = detail;
+        statusEl.appendChild(small);
+      }
+    }
+
+    async function postJSON(url, body) {
+      let res;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (e) {
+        throw { message: 'Could not reach the DB Explorer backend. Is `npm start` still running?', detail: e.message };
+      }
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.ok) {
+        const err = (data && data.error) || { message: `Request failed with HTTP ${res.status}` };
+        throw err;
+      }
+      return data;
+    }
+
+    function resetDetail(show = false) {
+      detailRequestId++;
+      detailBody.innerHTML = '';
+      detailStats.innerHTML = '';
+      detailStats.classList.add('hidden');
+      detailWrap.classList.add('hidden');
+      detailTitle.textContent = 'Table details';
+      detailEmpty.textContent = 'Click a table to see its columns.';
+      detailEmpty.classList.remove('hidden');
+      detailPanel.classList.toggle('hidden', !show);
+    }
+
+    function resetTables(message) {
+      tablesBody.innerHTML = '';
+      tablesWrap.classList.add('hidden');
+      tablesMeta.classList.add('hidden');
+      tablesTitle.textContent = 'Tables';
+      tablesEmpty.textContent = message;
+      tablesEmpty.classList.remove('hidden');
+      resetDetail(false);
+    }
+
+    function renderDatabases(filter = '') {
+      dbList.innerHTML = '';
+      const f = filter.toLowerCase();
+      const shown = databases.filter((d) => d.toLowerCase().includes(f));
+      for (const name of shown) {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = name;
+        b.title = name;
+        if (session && session.database === name) b.setAttribute('aria-current', 'true');
+        b.addEventListener('click', () => loadTables(name));
+        li.appendChild(b);
+        dbList.appendChild(li);
+      }
+      dbEmpty.textContent = databases.length ? 'No databases match the filter.' : 'No databases visible to this user.';
+      dbEmpty.classList.toggle('hidden', shown.length > 0);
+    }
+
+    function clearDatabases(message) {
+      databases = [];
+      renderDatabases();
+      dbEmpty.textContent = message;
+      dbFilter.classList.add('hidden');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const creds = readForm();
+      const directDb = dbInput.value.trim();
+      if (!creds.host || !creds.user) {
+        showStatus('err', 'Host and username are required.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+      showStatus('ok', `Connecting to ${creds.host}:${creds.port}…`);
+
+      try {
+        if (directDb) {
+          // Direct mode: skip listing databases (works without server-wide permissions).
+          session = { ...creds, database: null };
+          databases = [directDb];
+          dbFilter.classList.add('hidden');
+          const ok = await loadTables(directDb);
+          if (ok) showStatus('ok', `Connected to ${creds.host}:${creds.port} and opened "${directDb}".`);
+          else { session = null; clearDatabases('Connect to a server to list its databases.'); }
+          return;
+        }
+
+        const data = await postJSON('/api/connect', creds);
+        session = { ...creds, database: null };
+        databases = data.databases;
+
+        showStatus('ok', `Connected to ${data.server} (version ${data.version}). Found ${databases.length} database(s).`);
+        console.log(`[DB Explorer] Databases on ${data.server}:`);
+        console.table(databases.map((name) => ({ database: name })));
+
+        dbFilter.value = '';
+        dbFilter.classList.toggle('hidden', databases.length < 8);
+        renderDatabases();
+        resetTables('Select a database to see its tables.');
+      } catch (err) {
+        session = null;
+        clearDatabases('Connect to a server to list its databases.');
+        resetTables('Select a database to see its tables.');
+        let msg = err.message || 'Connection failed.';
+        if (err.type === 'DATABASE_ERROR' || err.type === 'AUTHENTICATION_FAILED') {
+          msg += ' If this user cannot list databases, type the database name above and connect again.';
+        }
+        showStatus('err', msg, err.detail);
+        console.error('[DB Explorer] Connect failed:', err);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = buttonLabel();
+      }
+    });
+
+    dbFilter.addEventListener('input', () => renderDatabases(dbFilter.value));
+
+    /** Loads the tables of dbName. Resolves true on success, false on error. */
+    async function loadTables(dbName) {
+      if (!session) return false;
+      session.database = dbName;
+      renderDatabases(dbFilter.value);
+
+      const reqId = ++tablesRequestId;
+      resetTables(`Loading tables in ${dbName}…`);
+      tablesTitle.textContent = `Tables — ${dbName}`;
+
+      try {
+        const data = await postJSON('/api/tables', session);
+        if (reqId !== tablesRequestId) return true; // a newer selection superseded this one
+
+        console.log(`[DB Explorer] Tables in "${dbName}":`);
+        console.table(data.details);
+
+        if (!data.details.length) {
+          tablesEmpty.textContent = `"${dbName}" has no tables.`;
+          return true;
+        }
+
+        const frag = document.createDocumentFragment();
+        data.details.forEach((t, i) => {
+          const tr = document.createElement('tr');
+          const isView = /view/i.test(t.type);
+          tr.tabIndex = 0;
+          tr.title = 'Click to see columns and row count';
+          tr.innerHTML = '<td class="num"></td><td></td><td class="name"></td><td><span class="badge"></span></td>';
+          tr.children[0].textContent = i + 1;
+          tr.children[1].textContent = t.schema;
+          tr.children[2].textContent = t.name;
+          const badge = tr.children[3].firstChild;
+          badge.textContent = isView ? 'VIEW' : 'TABLE';
+          if (isView) badge.classList.add('view');
+          const open = () => loadColumns(t, tr);
+          tr.addEventListener('click', open);
+          tr.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); } });
+          frag.appendChild(tr);
+        });
+        tablesBody.appendChild(frag);
+
+        const views = data.details.filter((t) => /view/i.test(t.type)).length;
+        tablesMeta.textContent = `${data.count - views} table(s)` + (views ? `, ${views} view(s)` : '') + ' — click one to see its columns';
+        tablesMeta.classList.remove('hidden');
+        tablesEmpty.classList.add('hidden');
+        tablesWrap.classList.remove('hidden');
+        resetDetail(true);
+        return true;
+      } catch (err) {
+        if (reqId !== tablesRequestId) return false;
+        tablesEmpty.textContent = `Could not load tables for "${dbName}".`;
+        showStatus('err', err.message || 'Failed to load tables.', err.detail);
+        console.error(`[DB Explorer] Loading tables for "${dbName}" failed:`, err);
+        return false;
+      }
+    }
+
+    function stat(value, label) {
+      const d = document.createElement('div');
+      d.className = 'stat';
+      const b = document.createElement('b');
+      b.textContent = value;
+      const s = document.createElement('span');
+      s.textContent = label;
+      d.append(b, s);
+      return d;
+    }
+
+    async function loadColumns(t, row) {
+      if (!session || !session.database) return;
+      for (const r of tablesBody.children) r.removeAttribute('aria-selected');
+      row.setAttribute('aria-selected', 'true');
+
+      resetDetail(true);
+      const reqId = detailRequestId;
+      const label = session.engine === 'mssql' ? `${t.schema}.${t.name}` : t.name;
+      detailTitle.textContent = `Details — ${label}`;
+      detailEmpty.textContent = `Loading columns of ${label}…`;
+      detailPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      try {
+        const data = await postJSON('/api/columns', { ...session, schema: t.schema, table: t.name });
+        if (reqId !== detailRequestId) return;
+
+        console.log(`[DB Explorer] Columns of "${label}" (${data.rowCount ?? '?'} rows):`);
+        console.table(data.columns);
+
+        const pkCount = data.columns.filter((c) => c.primaryKey).length;
+        detailStats.append(
+          stat(data.rowCount == null ? 'n/a' : data.rowCount.toLocaleString(), 'rows'),
+          stat(data.columns.length, 'columns'),
+          stat(pkCount || '—', 'primary key cols'),
+        );
+        if (data.rowCountError) detailStats.firstChild.title = data.rowCountError;
+        detailStats.classList.remove('hidden');
+
+        const frag = document.createDocumentFragment();
+        data.columns.forEach((c, i) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td class="num"></td><td class="name"></td><td class="mono"></td><td></td><td></td><td class="mono muted"></td>';
+          tr.children[0].textContent = i + 1;
+          tr.children[1].textContent = c.name;
+          tr.children[2].textContent = c.type + (c.extra ? ` ${c.extra}` : '');
+          tr.children[3].textContent = c.nullable ? 'YES' : 'NO';
+          if (c.primaryKey) {
+            const b = document.createElement('span');
+            b.className = 'badge pk';
+            b.textContent = 'PK';
+            tr.children[4].appendChild(b);
+          }
+          tr.children[5].textContent = c.default == null ? '' : String(c.default);
+          frag.appendChild(tr);
+        });
+        detailBody.appendChild(frag);
+        detailEmpty.classList.add('hidden');
+        detailWrap.classList.remove('hidden');
+      } catch (err) {
+        if (reqId !== detailRequestId) return;
+        detailEmpty.textContent = err.message || `Could not load details for ${label}.`;
+        console.error(`[DB Explorer] Loading columns for "${label}" failed:`, err);
+      }
+    }
+</script>
+</body>
+</html>
