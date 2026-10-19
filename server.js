@@ -5,6 +5,7 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const sql = require('mssql');
 const { buildCashSlips, missingColumns, DEFAULT_CUTOFF, REQUIRED } = require('./cash-slip');
+const savedConnection = require('./saved-connection');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -21,12 +22,15 @@ const SYSTEM_DBS = {
 // not in the URL (where they would land in browser history and logs). Nothing
 // else may be posted, and no other write-style method is accepted at all.
 const READ_ENDPOINTS = new Set(['/api/connect', '/api/tables', '/api/columns', '/api/cash-slips']);
+// These write ONLY to the local data/connection.json file (remember-me), never to the database.
+const LOCAL_SETTINGS_ENDPOINTS = new Set(['/api/saved-connection', '/api/saved-connection/last', '/api/saved-connection/forget']);
+const POST_ALLOWED = new Set([...READ_ENDPOINTS, ...LOCAL_SETTINGS_ENDPOINTS]);
 
 const app = express();
 app.use((req, res, next) => {
   if (req.method === 'GET' || req.method === 'HEAD') return next();
-  if (req.method === 'POST' && READ_ENDPOINTS.has(req.path)) return next();
-  res.set('Allow', READ_ENDPOINTS.has(req.path) ? 'POST' : 'GET, HEAD');
+  if (req.method === 'POST' && POST_ALLOWED.has(req.path)) return next();
+  res.set('Allow', POST_ALLOWED.has(req.path) ? 'POST' : 'GET, HEAD');
   return res.status(405).json({
     ok: false,
     error: { type: 'READ_ONLY_BLOCKED', severity: 'warning', message: `${req.method} ${req.path} is not allowed: this app is read-only.` },
@@ -264,7 +268,7 @@ function sendError(res, err, c) {
 app.post('/api/connect', async (req, res) => {
   let c;
   try {
-    c = parseCredentials(req.body || {});
+    c = parseCredentials(await savedConnection.resolve(req.body || {}));
     c.database = ''; // connect at server level
 
     let databases;
@@ -301,7 +305,7 @@ app.post('/api/connect', async (req, res) => {
 app.post('/api/tables', async (req, res) => {
   let c;
   try {
-    c = parseCredentials(req.body || {}, { requireDatabase: true });
+    c = parseCredentials(await savedConnection.resolve(req.body || {}), { requireDatabase: true });
 
     let details;
     if (c.engine === 'mysql') {
@@ -350,7 +354,7 @@ function mssqlTypeLabel(col) {
 app.post('/api/columns', async (req, res) => {
   let c;
   try {
-    const body = req.body || {};
+    const body = await savedConnection.resolve(req.body || {});
     c = parseCredentials(body, { requireDatabase: true });
     const table = String(body.table || '').trim();
     if (!table) throw new ValidationError('Table name is required.');
@@ -469,7 +473,7 @@ app.post('/api/columns', async (req, res) => {
 app.post('/api/cash-slips', async (req, res) => {
   let c;
   try {
-    const body = req.body || {};
+    const body = await savedConnection.resolve(req.body || {});
     c = parseCredentials(body, { requireDatabase: true });
     const table = String(body.table || '').trim();
     if (!table) throw new ValidationError('Table name is required.');
@@ -512,6 +516,39 @@ app.post('/api/cash-slips', async (req, res) => {
     }
     sendError(res, err, c);
   }
+});
+
+/* Remember-me: local file only (data/connection.json). The password is never sent back. */
+
+app.get('/api/saved-connection', (req, res) => {
+  res.json({ ok: true, saved: savedConnection.getPublic() });
+});
+
+app.post('/api/saved-connection', async (req, res) => {
+  try {
+    const body = req.body || {};
+    // Re-saving from an auto-connected session keeps the already saved password.
+    const c = parseCredentials(await savedConnection.resolve(body));
+    await savedConnection.save(c, { keepPassword: Boolean(body.useSaved) });
+    console.log(`[saved-connection] saved ${c.engine} ${c.user}@${c.host}:${c.port}`);
+    res.json({ ok: true, saved: savedConnection.getPublic() });
+  } catch (err) {
+    if (err instanceof ValidationError) return sendError(res, err);
+    console.warn(`[warning] SAVE_FAILED: ${err.message}`);
+    res.status(500).json({ ok: false, error: { type: 'SAVE_FAILED', severity: 'warning', message: `Could not save the connection: ${err.message}` } });
+  }
+});
+
+app.post('/api/saved-connection/last', (req, res) => {
+  const b = req.body || {};
+  const stored = savedConnection.rememberLast({ database: b.database, table: b.table, schema: b.schema });
+  res.json({ ok: true, stored });
+});
+
+app.post('/api/saved-connection/forget', (req, res) => {
+  savedConnection.forget();
+  console.log('[saved-connection] forgotten');
+  res.json({ ok: true });
 });
 
 // Malformed JSON bodies.

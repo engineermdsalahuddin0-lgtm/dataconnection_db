@@ -104,6 +104,8 @@
     .status.err { background: var(--danger-soft); color: var(--danger); }
     .status.warn { background: #fff4d6; color: #8a5a00; border-left: 4px solid #e0a100; }
     @media (prefers-color-scheme: dark) { .status.warn { background: #3a3016; color: #f2c661; } }
+    .saved-row { margin-top: 12px; display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
+    .saved-row button { margin-top: 0; padding: 7px; font-size: 13px; }
     .readonly-note { display: inline-block; margin-top: 8px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--ok-soft); color: var(--ok); }
     .status small { display: block; margin-top: 4px; font-family: var(--mono); font-size: 12px; opacity: .85; word-break: break-word; }
 
@@ -228,10 +230,18 @@
         <label class="check">
           <input type="checkbox" id="hideSystem" name="hideSystem" /> Hide system databases
         </label>
+        <label class="check">
+          <input type="checkbox" id="remember" /> Save this connection <span class="hint">(auto-connect next time)</span>
+        </label>
+        <p class="field-note">Saved on this PC only in <code>data/connection.json</code>. The password is encrypted for your Windows user and never sent back to the browser.</p>
 
         <button type="submit" id="connect-btn">Connect &amp; Fetch Databases</button>
       </form>
       <div id="status" class="status hidden" role="status"></div>
+      <div id="saved-row" class="saved-row hidden">
+        <span id="saved-note"></span>
+        <button type="button" id="forget-btn" class="secondary">Forget saved connection</button>
+      </div>
     </section>
 
     <!-- Results -->
@@ -329,6 +339,13 @@
     let databases = [];
     let tablesRequestId = 0;
     let detailRequestId = 0;
+    const tableRows = new Map(); // table name -> { t, tr } for the loaded table list
+
+    // Remember-me state. While usingSaved is true the browser sends no password;
+    // the server fills in the saved (encrypted) one.
+    let savedInfo = null;
+    let usingSaved = false;
+    const PASSWORD_SAVED_HINT = '•••••• saved (encrypted)';
 
     const buttonLabel = () => dbInput.value.trim() ? 'Connect & Fetch Tables' : 'Connect & Fetch Databases';
 
@@ -338,17 +355,92 @@
     });
     dbInput.addEventListener('input', () => { if (!btn.disabled) btn.textContent = buttonLabel(); });
 
+    // Editing any credential means the user is typing a new connection, not the saved one.
+    function stopUsingSaved() {
+      if (!usingSaved) return;
+      usingSaved = false;
+      $('password').placeholder = '';
+    }
+    for (const id of ['host', 'port', 'user', 'password']) $(id).addEventListener('input', stopUsingSaved);
+    engineEl.addEventListener('change', stopUsingSaved);
+
     function readForm() {
       return {
         engine: engineEl.value,
         host: $('host').value.trim(),
         port: portEl.value.trim() || DEFAULT_PORTS[engineEl.value],
         user: $('user').value.trim(),
-        password: $('password').value,
+        password: usingSaved ? '' : $('password').value,
+        useSaved: usingSaved,
         encrypt: $('encrypt').checked,
         hideSystem: $('hideSystem').checked,
       };
     }
+
+    function showSavedRow() {
+      $('saved-row').classList.toggle('hidden', !savedInfo);
+      if (savedInfo) {
+        const when = savedInfo.savedAt ? new Date(savedInfo.savedAt).toLocaleString() : '';
+        $('saved-note').textContent = `Saved: ${savedInfo.user}@${savedInfo.host}:${savedInfo.port}` + (when ? ` (${when})` : '');
+      }
+    }
+
+    /** Fills the form from a saved connection (everything except the password). */
+    function applySaved(s) {
+      savedInfo = s;
+      engineEl.value = s.engine || 'mysql';
+      engineEl.dispatchEvent(new Event('change'));
+      $('host').value = s.host || '';
+      portEl.value = s.port || '';
+      $('user').value = s.user || '';
+      dbInput.value = s.database || '';
+      $('encrypt').checked = Boolean(s.encrypt);
+      $('hideSystem').checked = Boolean(s.hideSystem);
+      $('password').value = '';
+      $('password').placeholder = PASSWORD_SAVED_HINT;
+      $('remember').checked = true;
+      usingSaved = true; // after the change event above, which would have cleared it
+      btn.textContent = buttonLabel();
+      showSavedRow();
+    }
+
+    /** Saves or forgets the connection after a successful connect, per the checkbox. */
+    async function persistConnection(creds) {
+      try {
+        if ($('remember').checked) {
+          const data = await postJSON('/api/saved-connection', { ...creds, database: dbInput.value.trim() });
+          savedInfo = data.saved;
+          usingSaved = true;
+          $('password').value = '';
+          $('password').placeholder = PASSWORD_SAVED_HINT;
+        } else if (savedInfo) {
+          await postJSON('/api/saved-connection/forget', {});
+          savedInfo = null;
+        }
+        showSavedRow();
+      } catch (err) {
+        showStatus('warn', err.message || 'Could not save the connection.', err.detail);
+      }
+    }
+
+    /** Records the last opened database/table so the next start reopens it. */
+    function rememberLast(database, table, schema) {
+      if (!savedInfo) return;
+      postJSON('/api/saved-connection/last', { database, table, schema }).catch(() => {});
+    }
+
+    $('forget-btn').addEventListener('click', async () => {
+      try {
+        await postJSON('/api/saved-connection/forget', {});
+        savedInfo = null;
+        stopUsingSaved();
+        $('remember').checked = false;
+        showSavedRow();
+        showStatus('ok', 'Saved connection removed from this PC. Enter the password to connect again.');
+      } catch (err) {
+        showStatus('warn', err.message || 'Could not remove the saved connection.');
+      }
+    });
 
     /** Shows a message in `el`. kind 'warn' is used for every problem while fetching data. */
     function setStatus(el, kind, message, detail) {
@@ -396,6 +488,7 @@
 
     function resetTables(message) {
       tablesBody.innerHTML = '';
+      tableRows.clear();
       tablesWrap.classList.add('hidden');
       tablesMeta.classList.add('hidden');
       tablesTitle.textContent = 'Tables';
@@ -430,13 +523,18 @@
       dbFilter.classList.add('hidden');
     }
 
-    form.addEventListener('submit', async (e) => {
+    form.addEventListener('submit', (e) => {
       e.preventDefault();
+      connect();
+    });
+
+    /** Connects with the form values. Resolves true on success, false otherwise. */
+    async function connect() {
       const creds = readForm();
       const directDb = dbInput.value.trim();
       if (!creds.host || !creds.user) {
         showStatus('warn', 'Host and username are required.');
-        return;
+        return false;
       }
 
       btn.disabled = true;
@@ -450,9 +548,11 @@
           databases = [directDb];
           dbFilter.classList.add('hidden');
           const ok = await loadTables(directDb);
-          if (ok) showStatus('ok', `Connected to ${creds.host}:${creds.port} and opened "${directDb}".`);
-          else { session = null; clearDatabases('Connect to a server to list its databases.'); }
-          return;
+          if (ok) {
+            showStatus('ok', `Connected to ${creds.host}:${creds.port} and opened "${directDb}".`);
+            await persistConnection(creds);
+          } else { session = null; clearDatabases('Connect to a server to list its databases.'); }
+          return ok;
         }
 
         const data = await postJSON('/api/connect', creds);
@@ -467,6 +567,8 @@
         dbFilter.classList.toggle('hidden', databases.length < 8);
         renderDatabases();
         resetTables('Select a database to see its tables.');
+        await persistConnection(creds);
+        return true;
       } catch (err) {
         session = null;
         clearDatabases('Connect to a server to list its databases.');
@@ -475,13 +577,17 @@
         if (err.type === 'DATABASE_ERROR' || err.type === 'AUTHENTICATION_FAILED') {
           msg += ' If this user cannot list databases, type the database name above and connect again.';
         }
+        if (creds.useSaved && err.type === 'AUTHENTICATION_FAILED') {
+          msg += ' The saved password may have changed: type the new password and connect again.';
+        }
         showStatus('warn', msg, err.detail);
         console.warn('[DB Explorer] Connect failed:', err);
+        return false;
       } finally {
         btn.disabled = false;
         btn.textContent = buttonLabel();
       }
-    });
+    }
 
     dbFilter.addEventListener('input', () => renderDatabases(dbFilter.value));
 
@@ -523,9 +629,11 @@
           const open = () => loadColumns(t, tr);
           tr.addEventListener('click', open);
           tr.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); } });
+          tableRows.set(t.name, { t, tr });
           frag.appendChild(tr);
         });
         tablesBody.appendChild(frag);
+        rememberLast(dbName, null, null);
 
         const views = data.details.filter((t) => /view/i.test(t.type)).length;
         tablesMeta.textContent = `${data.count - views} table(s)` + (views ? `, ${views} view(s)` : '') + ' — click one to see its columns';
@@ -563,6 +671,7 @@
       const reqId = detailRequestId;
       const label = session.engine === 'mssql' ? `${t.schema}.${t.name}` : t.name;
       resetCash(t);
+      rememberLast(session.database, t.name, t.schema);
       detailTitle.textContent = `Details — ${label}`;
       detailEmpty.textContent = `Loading columns of ${label}…`;
       detailPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -902,6 +1011,36 @@
       w.focus();
       w.print();
     });
+
+    /* ------------------- Auto-connect with the saved connection ------------------- */
+
+    async function autoLoad() {
+      let saved = null;
+      try {
+        const res = await fetch('/api/saved-connection');
+        saved = (await res.json()).saved;
+      } catch {
+        return; // backend not reachable; the form still works manually
+      }
+      if (!saved) return;
+
+      applySaved(saved);
+      showStatus('ok', `Saved connection found — connecting to ${saved.host}…`);
+      if (!(await connect())) return;
+
+      // Reopen the database and table that were open last time.
+      if (saved.lastDatabase && session && session.database !== saved.lastDatabase) {
+        if (!(await loadTables(saved.lastDatabase))) return;
+      }
+      const hit = saved.lastTable && tableRows.get(saved.lastTable);
+      if (hit) {
+        await loadColumns(hit.t, hit.tr);
+        showStatus('ok', `Auto-connected to ${saved.host} and opened ${saved.lastDatabase} / ${saved.lastTable}.`);
+      } else if (saved.lastTable) {
+        showStatus('warn', `Connected, but the last table "${saved.lastTable}" was not found in ${session.database}. Pick a table from the list.`);
+      }
+    }
+    autoLoad();
 </script>
 </body>
 </html>

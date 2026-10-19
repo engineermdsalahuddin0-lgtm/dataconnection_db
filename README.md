@@ -14,7 +14,7 @@ Ei app database-e **kichu lekhe na, bodlay na, delete kore na**. Bhul kore-o jat
 |---|---|
 | **SQL guard** | Server-e pathanor age protyekta query check hoy. Shudhu ekta `SELECT` ba `SHOW` jete pare. `INSERT`, `UPDATE`, `DELETE`, `DROP`, `TRUNCATE`, `SELECT ... INTO`, `FOR UPDATE` ba ek-er beshi statement pathanor age-i atke jay. |
 | **DB session READ ONLY** | MySQL-e connect korei `SET SESSION TRANSACTION READ ONLY` chalano hoy. Code-e bhul thakleo MySQL server nije write refuse korbe. SQL Server-e shob query ekta transaction-er bhitore chole, ar sesh-e sob shomoy rollback hoy, kokhono commit hoy na. |
-| **HTTP lock** | Browser theke shudhu `GET` (page) ar 4 ta read endpoint-e `POST` cholbe. Onno shob `POST`, `PUT`, `DELETE`, `PATCH` 405 diye bondho. |
+| **HTTP lock** | Browser theke shudhu `GET` (page), 4 ta read endpoint, ar connection save-er 3 ta local endpoint-e `POST` cholbe. Onno shob `POST`, `PUT`, `DELETE`, `PATCH` 405 diye bondho. Save endpoint gulo shudhu local `data/connection.json` file-e lekhe, DB-te kokhono na. |
 
 > **Read endpoint POST keno?** `/api/connect`, `/api/tables`, `/api/columns`, `/api/cash-slips` DB-r username ar password request-er body-te niye jay. GET hole password URL-e boshto, ar URL browser history ar server log-e theke jay. Ei 4 ta endpoint shudhu DB theke pore, kichu save kore na.
 
@@ -66,7 +66,20 @@ Bam dike **Connection** form-e eigulo din:
 - **Host / IP**, **Port** (MySQL-er default 3306), **Username**, **Password**
 - **Database name:** jana thakle likhun, sorasori table-er list ashbe. Na jana thakle khali rakhun, shob database-er list ashbe.
 
-Tarpor **Connect** chapun.
+Prothombar **Save this connection** checkbox-e tick din, tarpor **Connect** chapun.
+
+#### Connection save ar auto-connect
+- Tick dewa obosthay connect **shofol** hole connection save hoy. Bhul password save hoy na.
+- Erpor theke `npm start` kore page khullei:
+  1. form nije theke bhore jay,
+  2. connect hoy,
+  3. sesh bar je database ar table khulechilen, seta-o nije theke khule jay (Table details ar Cash slips panel soho).
+  Apnake shudhu **Calculate cash part** chapte hobe.
+- **Kotha-y save hoy:** shudhu ei PC-r `data/connection.json`-e (git-ignored). Password **Windows DPAPI** diye encrypt kora thake. Shudhu apnar Windows user ei PC-tei eta khulte pare, onno PC-te copy korle kaj korbe na.
+- Password kokhono browser-e ferot ashe na. Password box-e `•••••• saved (encrypted)` dekhabe. Auto-connect-er shomoy server nije saved password boshiye ney.
+- **Password bodle gele:** auto-connect-e ⚠ Authentication warning ashbe. Password box-e notun password likhe Connect chapun, notun-ta save hoye jabe.
+- **Onno server-e jete:** host, user ba password bodlan. Tahole saved-ta use hobe na, notun details diye connect hobe. Tick thakle notun-ta save hobe.
+- **Muche felte:** **Forget saved connection** chapun. Athoba tick tule diye connect korun.
 
 ### Step 2: Database select
 **Databases** list theke payroll-er database-e click korun. Daan dike tar table-er list ashbe.
@@ -161,6 +174,8 @@ Calculate korar por status line ek bar poren:
 | `Authentication failed` | Username ba password bhul |
 | `Connection refused` / `timed out` | Host, port ba firewall check korun |
 | Print window khule na | Browser-e pop-up allow korun |
+| Auto-connect-e `Authentication failed` | Saved password bodle geche. Notun password likhe Connect chapun |
+| `Could not save the connection: DPAPI failed` | PowerShell block kora ache. IT-ke janan, ba save chara connect korun |
 
 ---
 
@@ -171,6 +186,7 @@ Calculate korar por status line ek bar poren:
 | `server.js` | Express server. API: `/api/connect`, `/api/tables`, `/api/columns`, `/api/cash-slips` |
 | `cash-slip.js` | Eligibility, ratio lookup ar bank/cash bhag-er hishab |
 | `public/index.html` | UI: connection, table browse, Cash slips panel, CSV, print |
+| `saved-connection.js` | Connection save, DPAPI encrypt/decrypt, sesh khola table mone rakha |
 | `scripts/build-cash-ratios.ps1` | Reference Excel theke `data/cash_ratios.json` banay |
 | `docs/` | Reference Excel ar schema (confidential, git-ignored) |
-| `data/` | Ratio JSON (confidential, git-ignored) |
+| `data/` | Ratio JSON ar `connection.json` (saved connection, encrypted password). Confidential, git-ignored |
