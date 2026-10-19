@@ -1,0 +1,94 @@
+//Always connected
+//Can do anytype of query{sql querybox}
+//
+
+bool function check_gross_for_cash(var gross,DOJ,DOS,DOC){
+    if(DOS!= Active){
+    if gross==0  return false
+    else if gross (employee DOJ before 1 september) and gross>=60000 return true;
+    else if gross (employee DOJ after 1 september ) and gross>=100000 return true;
+    
+    }
+}
+var calculate_ratio(gross,other_facility){
+    ratio = (other_facility/gross)
+    return ratio
+}
+var calculate_cash(gross,cash_ratio,house_rent_calculation,medical_calculation){
+   if(check_gross_for_cash(gross,DOJ,DOS,DOC)){
+     basic_cash_initial = gross*cash_ratio                                        //split bank part(70%) cash part(30%) 
+    var house_rent_calculation = calculate_ratio(gross,house_rent_calculation)*basic_cash_initial
+    var medical_calculation = calculate_ratio(gross,medical_calculation)*basic_cash_initial
+
+    cash = basic_cash_initial-(house_rent_calculation+medical_calculation)
+    return [cash,house_rent_calculation,medical_calculation]
+   }
+   
+}
+
+var Print_payslip(empl.table){
+    print(emp.table.name)
+    print(emp.table.designation)
+    print(calculate_cash)
+}
+
+
+CASH_PERCENT = 0.30
+BANK_PERCENT = 0.70
+
+function qualifies_for_cash(gross, DOJ):
+    if gross <= 0:
+        return false
+    if DOJ < SEP_1:
+        return gross >= 60000
+    else:
+        return gross >= 100000
+
+function calculate_salary_split(emp):
+    gross = emp.Gross
+
+    # 1. threshold check
+    if not qualifies_for_cash(gross, emp.DOJ):
+        return {
+            bank: { Basic: emp.Basic, HouseRent: emp.HouseRent,
+                    Medical: emp.Medical, Conveyance: emp.Conveyance,
+                    Total: gross },
+            cash: null
+        }
+
+    # 2. 70 / 30 split of gross
+    bank_total = round(gross * BANK_PERCENT)
+    cash_total = gross - bank_total          # remainder, jate total mile
+
+    # 3. employee's own component percentage (based on gross)
+    basic_pct      = emp.Basic      / gross
+    houserent_pct  = emp.HouseRent  / gross
+    medical_pct    = emp.Medical    / gross
+    conveyance_pct = emp.Conveyance / gross
+
+    # 4. cash part breakdown
+    cash_houserent  = round(cash_total * houserent_pct)
+    cash_medical    = round(cash_total * medical_pct)
+    cash_conveyance = round(cash_total * conveyance_pct)
+    cash_basic      = cash_total - (cash_houserent + cash_medical + cash_conveyance)  # remainder
+
+    # 5. bank part breakdown (same percentage)
+    bank_houserent  = round(bank_total * houserent_pct)
+    bank_medical    = round(bank_total * medical_pct)
+    bank_conveyance = round(bank_total * conveyance_pct)
+    bank_basic      = bank_total - (bank_houserent + bank_medical + bank_conveyance)
+
+    return {
+        bank: { Basic: bank_basic, HouseRent: bank_houserent,
+                Medical: bank_medical, Conveyance: bank_conveyance,
+                Total: bank_total },
+        cash: { Basic: cash_basic, HouseRent: cash_houserent,
+                Medical: cash_medical, Conveyance: cash_conveyance,
+                Total: cash_total }
+    }
+
+function process_payroll(emp):
+    split = calculate_salary_split(emp)      # deduction er AGE
+    deductions = emp.IncomeTax + emp.PF + emp.Stamp + ...
+    # deduction kon part theke katbe (bank naki cash) ta niche dekhun
+    ...

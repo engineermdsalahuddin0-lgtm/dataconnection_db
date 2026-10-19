@@ -4,6 +4,7 @@ const path = require('path');
 const express = require('express');
 const mysql = require('mysql2/promise');
 const sql = require('mssql');
+const { buildCashSlips, missingColumns, DEFAULT_CUTOFF, REQUIRED } = require('./cash-slip');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -16,7 +17,21 @@ const SYSTEM_DBS = {
   mssql: ['master', 'tempdb', 'model', 'msdb'],
 };
 
+// The read endpoints use POST only so DB credentials travel in the request body,
+// not in the URL (where they would land in browser history and logs). Nothing
+// else may be posted, and no other write-style method is accepted at all.
+const READ_ENDPOINTS = new Set(['/api/connect', '/api/tables', '/api/columns', '/api/cash-slips']);
+
 const app = express();
+app.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD') return next();
+  if (req.method === 'POST' && READ_ENDPOINTS.has(req.path)) return next();
+  res.set('Allow', READ_ENDPOINTS.has(req.path) ? 'POST' : 'GET, HEAD');
+  return res.status(405).json({
+    ok: false,
+    error: { type: 'READ_ONLY_BLOCKED', severity: 'warning', message: `${req.method} ${req.path} is not allowed: this app is read-only.` },
+  });
+});
 app.use(express.json({ limit: '100kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -93,23 +108,64 @@ function mssqlConfig(c) {
   };
 }
 
-/** Run `fn` with an open MySQL connection, always closing it afterwards. */
-async function withMysql(c, fn) {
-  const conn = await mysql.createConnection(mysqlConfig(c));
+/*
+ * READ-ONLY GUARANTEE. This app must never change data on the server. Three layers:
+ *   1. Every statement must be a single SELECT/SHOW (assertReadOnly), checked before it is sent.
+ *   2. MySQL sessions are switched to READ ONLY, so the server itself rejects any write.
+ *   3. SQL Server work runs inside a transaction that is always rolled back, never committed.
+ * Route handlers only ever see the guarded wrappers below, never the raw connection.
+ */
+class ReadOnlyError extends Error {}
+
+function assertReadOnly(text) {
+  const s = String(text || '');
+  const problem =
+    !/^\s*(SELECT|SHOW)\b/i.test(s) ? 'only SELECT / SHOW statements are allowed' :
+    /;\s*\S/.test(s) ? 'multiple statements are not allowed' :
+    /\bINTO\b/i.test(s) ? 'SELECT ... INTO writes data and is not allowed' :
+    /\bFOR\s+UPDATE\b/i.test(s) ? 'locking reads (FOR UPDATE) are not allowed' :
+    null;
+  if (problem) throw new ReadOnlyError(`Blocked by read-only mode: ${problem}.`);
+}
+
+/** Run `fn` with a read-only MySQL connection, always closing it afterwards. */
+async function withMysql(c, fn, extra = {}) {
+  const conn = await mysql.createConnection({ ...mysqlConfig(c), ...extra, multipleStatements: false });
   try {
-    return await fn(conn);
+    await conn.query('SET SESSION TRANSACTION READ ONLY');
+    const guarded = {
+      query(q, params) {
+        assertReadOnly(typeof q === 'string' ? q : q && q.sql);
+        return conn.query(q, params);
+      },
+    };
+    return await fn(guarded);
   } finally {
     await conn.end().catch(() => {});
   }
 }
 
-/** Run `fn` with a dedicated MSSQL pool, always closing it afterwards. */
+/** Run `fn` with a dedicated MSSQL pool; all requests run in a transaction that is rolled back. */
 async function withMssql(c, fn) {
   const pool = new sql.ConnectionPool(mssqlConfig(c));
   await pool.connect();
+  const tx = new sql.Transaction(pool);
+  let began = false;
   try {
-    return await fn(pool);
+    await tx.begin();
+    began = true;
+    const guarded = {
+      request() {
+        const r = new sql.Request(tx);
+        const run = r.query.bind(r);
+        r.query = (text) => { assertReadOnly(text); return run(text); };
+        r.batch = r.execute = () => { throw new ReadOnlyError('Blocked by read-only mode: batches and stored procedures are not allowed.'); };
+        return r;
+      },
+    };
+    return await fn(guarded);
   } finally {
+    if (began) await tx.rollback().catch(() => {});
     await pool.close().catch(() => {});
   }
 }
@@ -132,6 +188,13 @@ function describeError(err, c) {
 
   const lower = raw.toLowerCase();
   const map = [
+    {
+      // Our own guard, or the MySQL server refusing a write in a READ ONLY session.
+      test: err instanceof ReadOnlyError || code === 'ER_CANT_EXECUTE_IN_READ_ONLY_TRANSACTION' || lower.includes('read only transaction'),
+      status: 403,
+      type: 'READ_ONLY_BLOCKED',
+      message: err instanceof ReadOnlyError ? raw : 'Blocked by read-only mode: the database refused a write. Nothing was changed.',
+    },
     {
       test: ['ER_ACCESS_DENIED_ERROR', 'ELOGIN', 'ER_DBACCESS_DENIED_ERROR'].includes(code) ||
         lower.includes('login failed') || lower.includes('access denied'),
@@ -182,13 +245,15 @@ function describeError(err, c) {
   return { status: 500, type: 'DATABASE_ERROR', message: raw, code, detail: raw };
 }
 
+// Problems while reading data are reported as warnings: nothing is ever written,
+// so a failed read never leaves the database in a bad state.
 function sendError(res, err, c) {
   if (err instanceof ValidationError) {
-    return res.status(400).json({ ok: false, error: { type: 'VALIDATION_ERROR', message: err.message } });
+    return res.status(400).json({ ok: false, error: { type: 'VALIDATION_ERROR', severity: 'warning', message: err.message } });
   }
   const info = describeError(err, c);
-  console.error(`[error] ${info.type} (${info.code || 'no code'}): ${info.detail}`);
-  return res.status(info.status).json({ ok: false, error: info });
+  console.warn(`[warning] ${info.type} (${info.code || 'no code'}): ${info.detail}`);
+  return res.status(info.status).json({ ok: false, error: { ...info, severity: 'warning' } });
 }
 
 /* ------------------------------------------------------------------ */
@@ -400,10 +465,59 @@ app.post('/api/columns', async (req, res) => {
   }
 });
 
+// Endpoint 4: bank / cash split for every employee who qualifies for a cash slip.
+app.post('/api/cash-slips', async (req, res) => {
+  let c;
+  try {
+    const body = req.body || {};
+    c = parseCredentials(body, { requireDatabase: true });
+    const table = String(body.table || '').trim();
+    if (!table) throw new ValidationError('Table name is required.');
+    const schema = c.engine === 'mysql' ? c.database : String(body.schema || 'dbo').trim();
+    const cutoff = String(body.cutoff || DEFAULT_CUTOFF).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) throw new ValidationError('Cut-off date must be YYYY-MM-DD.');
+
+    let rows;
+    let columnNames;
+    if (c.engine === 'mysql') {
+      // dateStrings keeps DOJ/DOS as plain YYYY-MM-DD, avoiding timezone shifts.
+      ({ rows, columnNames } = await withMysql(c, async (conn) => {
+        const [r, fields] = await conn.query({
+          sql: `SELECT * FROM ${mysql.escapeId(c.database)}.${mysql.escapeId(table)}`,
+          timeout: 30000,
+        });
+        return { rows: r, columnNames: fields.map((f) => f.name) };
+      }, { dateStrings: true }));
+    } else {
+      ({ rows, columnNames } = await withMssql(c, async (pool) => {
+        const q = (s) => `[${s.replace(/]/g, ']]')}]`;
+        const r = await pool.request().query(`SELECT * FROM ${q(schema)}.${q(table)}`);
+        return { rows: r.recordset, columnNames: Object.keys(r.recordset.columns || {}) };
+      }));
+    }
+
+    const missing = missingColumns(columnNames);
+    if (missing.length) {
+      throw new ValidationError(`Table "${table}" is missing column(s) ${missing.join(', ')}. Cash slips need ${REQUIRED.join(', ')}.`);
+    }
+
+    const result = buildCashSlips(rows, { cutoff });
+    const s = result.summary;
+    console.log(`\n[cash-slips] ${c.database} / ${table} — ${s.totalRows} row(s), ${s.qualified} qualified, ${s.withCash} with cash (cut-off ${cutoff})`);
+
+    res.json({ ok: true, database: c.database, table, ...result });
+  } catch (err) {
+    if (err && /cash_ratios\.json/.test(err.message || '')) {
+      return res.status(500).json({ ok: false, error: { type: 'RATIO_FILE', severity: 'warning', message: err.message } });
+    }
+    sendError(res, err, c);
+  }
+});
+
 // Malformed JSON bodies.
 app.use((err, req, res, next) => {
   if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({ ok: false, error: { type: 'VALIDATION_ERROR', message: 'Request body is not valid JSON.' } });
+    return res.status(400).json({ ok: false, error: { type: 'VALIDATION_ERROR', severity: 'warning', message: 'Request body is not valid JSON.' } });
   }
   next(err);
 });

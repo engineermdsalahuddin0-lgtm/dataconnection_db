@@ -1,0 +1,11 @@
+revision 2.0
+
+R3001-KPI dashboard er color code #00bab5
+R3002-KPI gulo KPI id er order onushare thakbe
+R3003-Unit wise alada login korte parbe,UNIT select kore ID,pass dile dhuke jabe ,ek unit onno unit er details jante parbe na
+R3004-Unit wise dhukle oi unit er UNIT->Department ->Section->Subsection tree akare show hobe,,performance er upor ei tree node gulor color update hobe window full width wise hobe,
+abar kono section,subsection e hover korle total weight,goal,performance and description tooltip akare dekhabe,click korle direct oi department/section/subsection er KPI board e chole jabe(only click kora separtment/section/subsection er KPI ei jate dekha jai valo kore)..
+
+R3005-unit er kew login kore dhuktei topbar e index(jekhane unitwise department gulo thakbe,)
+current je all KPI ache oita rakhba kintu(All KPI tab e),ar ekta Tab e Single view KPI thakbe jekhane (Department,section,subsection) onushare filter kore KPI dekha jabe 
+R3006-Only 2026 er October,November,December er performance table e rakho

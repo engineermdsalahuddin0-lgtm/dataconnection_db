@@ -102,6 +102,9 @@
     .status { margin-top: 14px; padding: 10px 12px; border-radius: 8px; font-size: 14px; }
     .status.ok { background: var(--ok-soft); color: var(--ok); }
     .status.err { background: var(--danger-soft); color: var(--danger); }
+    .status.warn { background: #fff4d6; color: #8a5a00; border-left: 4px solid #e0a100; }
+    @media (prefers-color-scheme: dark) { .status.warn { background: #3a3016; color: #f2c661; } }
+    .readonly-note { display: inline-block; margin-top: 8px; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--ok-soft); color: var(--ok); }
     .status small { display: block; margin-top: 4px; font-family: var(--mono); font-size: 12px; opacity: .85; word-break: break-word; }
 
     .results { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
@@ -154,12 +157,42 @@
     .stat span { font-size: 12px; color: var(--muted); }
     td.mono { font-family: var(--mono); font-size: 13px; }
     td.muted { color: var(--muted); }
+
+    .cash-controls { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+    .cash-controls > div { flex: 1 1 180px; }
+    .cash-controls label { margin-top: 0; }
+    .cash-controls button { width: auto; margin-top: 0; padding: 9px 18px; }
+    .cash-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    .cash-actions .check { margin-top: 0; }
+    .cash-actions .spacer { flex: 1; }
+    .cash-actions button { width: auto; margin-top: 0; padding: 8px 16px; }
+    button.secondary { background: var(--accent-soft); color: var(--accent); }
+    button.secondary:hover { background: var(--accent-soft); outline: 1px solid var(--accent); }
+    th.r, td.r { text-align: right; font-variant-numeric: tabular-nums; }
+    .badge.designation { background: #fff4d6; color: #9a6700; }
+    .badge.default { background: var(--danger-soft); color: var(--danger); }
+    @media (prefers-color-scheme: dark) { .badge.designation { background: #3a3016; color: #f2c661; } }
+
+    .trace { margin-top: 16px; border: 1px solid var(--accent); border-radius: 8px; padding: 14px 16px; background: var(--bg); }
+    .trace h3 { margin: 0 0 4px; font-size: 16px; }
+    .trace .who { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+    .trace ol { margin: 0; padding-left: 20px; display: grid; gap: 14px; }
+    .trace li > b { display: block; margin-bottom: 4px; }
+    .trace .calc { font-family: var(--mono); font-size: 13px; white-space: pre-wrap; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 4px 0 0; }
+    .trace table { font-size: 13px; margin-top: 4px; background: var(--panel); border: 1px solid var(--border); }
+    .trace th, .trace td { padding: 5px 10px; }
+    .trace th { position: static; }
+    .trace tfoot td { font-weight: 700; border-top: 2px solid var(--border); }
+    .trace .pass { color: var(--ok); font-weight: 600; }
+    .trace .warn { color: var(--danger); font-weight: 600; }
+    .trace .close { float: right; width: auto; margin: 0; padding: 4px 12px; font-size: 13px; }
   </style>
 </head>
 <body>
   <header>
     <h1>DB Explorer</h1>
     <p>Connect to a MySQL or SQL Server instance and browse its databases and tables.</p>
+    <span class="readonly-note" title="Only SELECT / SHOW queries are sent. Nothing on the server can be changed.">🔒 Read-only: data shudhu pora hoy, kichu lekha hoy na</span>
   </header>
 
   <main>
@@ -234,6 +267,34 @@
           </div>
           <p id="detail-empty" class="empty">Click a table to see its columns.</p>
         </div>
+
+        <div class="panel hidden" id="cash-panel">
+          <h2 id="cash-title">Cash slips</h2>
+          <form id="cash-form" class="cash-controls" novalidate>
+            <div>
+              <label for="cutoff">Cut-off date</label>
+              <input id="cutoff" type="date" value="2026-09-01" required />
+            </div>
+            <button type="submit" id="cash-btn">Calculate cash part</button>
+          </form>
+          <p class="field-note">Joined before cut-off: Gross ≥ 60,000. Joined on/after: Gross ≥ 100,000. Ratio: employee → designation → 1.0.</p>
+          <div id="cash-status" class="status hidden" role="status"></div>
+          <div id="cash-stats" class="stats hidden" style="margin-top:14px"></div>
+          <div id="cash-actions" class="cash-actions hidden">
+            <label class="check"><input type="checkbox" id="cash-only" checked /> Only employees with cash &gt; 0</label>
+            <span class="spacer"></span>
+            <button type="button" id="csv-btn" class="secondary">Download CSV</button>
+            <button type="button" id="print-btn">Print slips</button>
+          </div>
+          <div id="cash-wrap" class="table-wrap hidden">
+            <table>
+              <thead><tr><th>#</th><th>Code</th><th>Name</th><th>Designation</th><th>DOJ</th><th class="r">Gross</th><th class="r">Ratio</th><th>Source</th><th class="r">Bank</th><th class="r">Cash</th><th class="r">Net bank</th></tr></thead>
+              <tbody id="cash-body" class="clickable"></tbody>
+            </table>
+          </div>
+          <p id="trace-hint" class="field-note hidden">Click a row to see its full calculation. The trace is only shown here, never on the printed slip.</p>
+          <div id="trace" class="trace hidden" aria-live="polite"></div>
+        </div>
       </div>
     </section>
   </main>
@@ -289,15 +350,17 @@
       };
     }
 
-    function showStatus(kind, message, detail) {
-      statusEl.className = 'status ' + kind;
-      statusEl.textContent = message;
+    /** Shows a message in `el`. kind 'warn' is used for every problem while fetching data. */
+    function setStatus(el, kind, message, detail) {
+      el.className = 'status ' + kind;
+      el.textContent = kind === 'warn' ? `⚠ Warning: ${message}` : message;
       if (detail && detail !== message) {
         const small = document.createElement('small');
         small.textContent = detail;
-        statusEl.appendChild(small);
+        el.appendChild(small);
       }
     }
+    const showStatus = (kind, message, detail) => setStatus(statusEl, kind, message, detail);
 
     async function postJSON(url, body) {
       let res;
@@ -328,6 +391,7 @@
       detailEmpty.textContent = 'Click a table to see its columns.';
       detailEmpty.classList.remove('hidden');
       detailPanel.classList.toggle('hidden', !show);
+      resetCash(null);
     }
 
     function resetTables(message) {
@@ -371,7 +435,7 @@
       const creds = readForm();
       const directDb = dbInput.value.trim();
       if (!creds.host || !creds.user) {
-        showStatus('err', 'Host and username are required.');
+        showStatus('warn', 'Host and username are required.');
         return;
       }
 
@@ -411,8 +475,8 @@
         if (err.type === 'DATABASE_ERROR' || err.type === 'AUTHENTICATION_FAILED') {
           msg += ' If this user cannot list databases, type the database name above and connect again.';
         }
-        showStatus('err', msg, err.detail);
-        console.error('[DB Explorer] Connect failed:', err);
+        showStatus('warn', msg, err.detail);
+        console.warn('[DB Explorer] Connect failed:', err);
       } finally {
         btn.disabled = false;
         btn.textContent = buttonLabel();
@@ -472,9 +536,9 @@
         return true;
       } catch (err) {
         if (reqId !== tablesRequestId) return false;
-        tablesEmpty.textContent = `Could not load tables for "${dbName}".`;
-        showStatus('err', err.message || 'Failed to load tables.', err.detail);
-        console.error(`[DB Explorer] Loading tables for "${dbName}" failed:`, err);
+        tablesEmpty.textContent = `⚠ Warning: could not load tables for "${dbName}".`;
+        showStatus('warn', err.message || 'Failed to load tables.', err.detail);
+        console.warn(`[DB Explorer] Loading tables for "${dbName}" failed:`, err);
         return false;
       }
     }
@@ -498,6 +562,7 @@
       resetDetail(true);
       const reqId = detailRequestId;
       const label = session.engine === 'mssql' ? `${t.schema}.${t.name}` : t.name;
+      resetCash(t);
       detailTitle.textContent = `Details — ${label}`;
       detailEmpty.textContent = `Loading columns of ${label}…`;
       detailPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -540,10 +605,303 @@
         detailWrap.classList.remove('hidden');
       } catch (err) {
         if (reqId !== detailRequestId) return;
-        detailEmpty.textContent = err.message || `Could not load details for ${label}.`;
-        console.error(`[DB Explorer] Loading columns for "${label}" failed:`, err);
+        detailEmpty.textContent = `⚠ Warning: ${err.message || `could not load details for ${label}.`}`;
+        console.warn(`[DB Explorer] Loading columns for "${label}" failed:`, err);
       }
     }
+
+    /* ---------------------------- Cash slips ---------------------------- */
+
+    const cashPanel = $('cash-panel');
+    const cashForm = $('cash-form');
+    const cashBtn = $('cash-btn');
+    const cashStatus = $('cash-status');
+    const cashStats = $('cash-stats');
+    const cashActions = $('cash-actions');
+    const cashWrap = $('cash-wrap');
+    const cashBody = $('cash-body');
+    const cashOnly = $('cash-only');
+
+    let cashTable = null;
+    let cashResult = null;
+    let cashRequestId = 0;
+
+    const money = (n) => Math.round(n).toLocaleString('en-IN');
+    const SOURCE_LABEL = { employee: 'Employee', designation: 'Designation', default: 'Default 1.0' };
+
+    function resetCash(table) {
+      cashRequestId++;
+      cashTable = table;
+      cashResult = null;
+      cashBody.innerHTML = '';
+      cashStats.innerHTML = '';
+      for (const el of [cashStatus, cashStats, cashActions, cashWrap, $('trace-hint'), traceEl]) el.classList.add('hidden');
+      traceEl.innerHTML = '';
+      cashPanel.classList.toggle('hidden', !table);
+      if (table) $('cash-title').textContent = `Cash slips — ${table.name}`;
+    }
+
+    function shownSlips() {
+      if (!cashResult) return [];
+      return cashOnly.checked ? cashResult.slips.filter((s) => s.cash.Total > 0) : cashResult.slips;
+    }
+
+    function renderCashTable() {
+      cashBody.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      shownSlips().forEach((s, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td class="num"></td><td class="mono"></td><td></td><td></td><td class="mono muted"></td>' +
+          '<td class="r"></td><td class="r mono"></td><td><span class="badge"></span></td><td class="r"></td><td class="r"></td><td class="r"></td>';
+        const cells = [i + 1, s.displayCode, s.name, s.designation, s.doj, money(s.gross), s.ratio.toFixed(4)];
+        cells.forEach((v, k) => { tr.children[k].textContent = v; });
+        const badge = tr.children[7].firstChild;
+        badge.textContent = SOURCE_LABEL[s.ratioSource];
+        badge.classList.add(s.ratioSource);
+        tr.children[8].textContent = money(s.bank.Total);
+        tr.children[9].textContent = money(s.cash.Total);
+        tr.children[10].textContent = money(s.netBank);
+        tr.tabIndex = 0;
+        tr.title = 'Click to see the full calculation';
+        const open = () => showTrace(s, tr);
+        tr.addEventListener('click', open);
+        tr.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); } });
+        frag.appendChild(tr);
+      });
+      cashBody.appendChild(frag);
+      hideTrace();
+    }
+
+    const escHTML = (v) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const dec = (n, d = 2) => Number(n).toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const traceEl = $('trace');
+
+    function hideTrace() {
+      traceEl.classList.add('hidden');
+      traceEl.innerHTML = '';
+      for (const r of cashBody.children) r.removeAttribute('aria-selected');
+    }
+
+    /** Renders every step behind one employee's numbers. Shown on screen only, never printed. */
+    function showTrace(s, row) {
+      for (const r of cashBody.children) r.removeAttribute('aria-selected');
+      row.setAttribute('aria-selected', 'true');
+      const t = s.trace;
+      const lk = t.lookup;
+      const h = escHTML;
+
+      // Step 1: eligibility
+      const dojNote = t.rawDOJ && t.rawDOJ !== s.doj ? ` (DB-te likha "${h(t.rawDOJ)}")` : '';
+      const step1 =
+        `DOJ        = ${h(s.doj)}${dojNote}\n` +
+        `Cut-off    = ${h(t.cutoff)}  →  ${t.joinedBefore ? 'cut-off-er AGE join' : 'cut-off-er DINE/PORE join'}\n` +
+        `Threshold  = ${money(s.threshold)}\n` +
+        `Gross      = ${money(s.gross)}  ≥  ${money(s.threshold)}  ✓\n` +
+        `DOS        = ${t.dos ? h(t.dos) + '  (cut-off-er age na, tai rakha holo)' : 'nei (active)'}`;
+
+      // Step 2: ratio lookup, in the order the server tried it
+      const tried = [];
+      const codeLine = (col, val) => {
+        if (val == null || val === '') return `${col.padEnd(20)} = (khali)  →  skip`;
+        const hit = lk.matchedBy === col;
+        return `${col.padEnd(20)} = "${h(val)}"  →  ${hit ? 'MILECHE' : 'reference-e nei'}`;
+      };
+      tried.push(codeLine('EmployeeCode', lk.employeeCode));
+      if (lk.matchedBy !== 'EmployeeCode') tried.push(codeLine('DisplayEmployeeCode', lk.displayCode));
+      if (s.ratioSource !== 'employee') {
+        tried.push(`${'Designation'.padEnd(20)} = "${h(lk.designation)}"  →  ` +
+          (s.ratioSource === 'designation' ? `MILECHE ("${h(lk.matchedKey)}" average)` : 'DesignationAverage-e nei'));
+      }
+      if (s.ratioSource === 'default') tried.push('Kono match nei      →  default ratio 1.0 (cash 0)');
+      tried.push(`\nRatio = ${t.ratioExact}`);
+      const sourceNote = { employee: 'Employee-r nijer ratio', designation: 'Designation-er average ratio', default: 'Default ratio' }[s.ratioSource];
+
+      // Step 3: bank / cash
+      const step3 =
+        `Bank = Gross ÷ Ratio\n` +
+        `     = ${money(s.gross)} ÷ ${t.ratioExact}\n` +
+        `     = ${dec(t.bankExact, 4)}  →  round  →  ${money(s.bank.Total)}\n\n` +
+        `Cash = Gross − Bank\n` +
+        `     = ${money(s.gross)} − ${money(s.bank.Total)}  =  ${money(s.cash.Total)}\n\n` +
+        `Bank ${dec(s.bank.Total / s.gross * 100)}%  ·  Cash ${dec(s.cash.Total / s.gross * 100)}%`;
+
+      // Step 4: component split
+      const partRows = PARTS.filter((p) => t.parts[p] || s.bank[p] || s.cash[p]).map((p) => {
+        const pct = t.parts[p] / s.gross;
+        const how = p === 'Basic'
+          ? 'baki (remainder)'
+          : `${money(s.cash.Total)} × ${dec(pct * 100)}% = ${dec(s.cash.Total * pct)}`;
+        return `<tr><td>${PART_LABEL[p]}</td><td class="r">${money(t.parts[p])}</td><td class="r">${dec(pct * 100)}%</td>` +
+          `<td class="r">${money(s.bank[p])}</td><td class="r">${money(s.cash[p])}</td><td class="mono muted">${how}</td></tr>`;
+      }).join('');
+      const nonBasicCash = PARTS.filter((p) => p !== 'Basic').reduce((a, p) => a + s.cash[p], 0);
+      const nonBasicBank = PARTS.filter((p) => p !== 'Basic').reduce((a, p) => a + s.bank[p], 0);
+
+      // Step 5: deductions
+      const items = Object.entries(t.deductionItems);
+      let step5 = items.length
+        ? items.map(([k, v]) => `${k.padEnd(18)} ${money(v).padStart(10)}`).join('\n') + '\n'
+        : 'Kono deduction column-e taka nei\n';
+      step5 += t.deductionSource === 'TotalDeductionsListed'
+        ? `\nTotal (TotalDeductionsListed column theke) = ${money(s.deductions)}`
+        : `\nTotal (upore-r column gulo jog kore)       = ${money(s.deductions)}`;
+      const itemSum = items.reduce((a, [, v]) => a + v, 0);
+      if (t.deductionSource === 'TotalDeductionsListed' && items.length && Math.round(itemSum) !== s.deductions) {
+        step5 += `\n⚠ Column gulor jogfol ${money(itemSum)}, TotalDeductionsListed-er sathe mile na`;
+      }
+      step5 += `\n\nNet bank = Bank − Deduction = ${money(s.bank.Total)} − ${money(s.deductions)} = ${money(s.netBank)}`;
+
+      // Step 6: cross-checks
+      const ok = s.bank.Total + s.cash.Total === s.gross;
+      const step6 =
+        `Bank + Cash   = ${money(s.bank.Total)} + ${money(s.cash.Total)} = ${money(s.bank.Total + s.cash.Total)}  ${ok ? '✓ Gross-er sathe mile' : '✗ Gross-er sathe mile NA'}\n` +
+        `Hate pabe     = Net bank + Cash = ${money(s.netBank)} + ${money(s.cash.Total)} = ${money(s.netBank + s.cash.Total)}`;
+
+      traceEl.innerHTML = `
+        <button type="button" class="secondary close">Close</button>
+        <h3>Calculation trace — ${h(s.displayCode)}</h3>
+        <p class="who">${h(s.name)} · ${h(s.designation)}${s.department ? ' · ' + h(s.department) : ''}${s.unit ? ' · ' + h(s.unit) : ''}</p>
+        <ol>
+          <li><b>Cash pabe kina</b><div class="calc">${step1}</div></li>
+          <li><b>Ratio khoja — <span class="${s.ratioSource === 'default' ? 'warn' : 'pass'}">${sourceNote}</span></b><div class="calc">${tried.join('\n')}</div></li>
+          <li><b>Bank ar cash bhag</b><div class="calc">${step3}</div></li>
+          <li><b>Vag onujayi breakdown</b>
+            <div class="table-wrap" style="max-height:none"><table>
+              <thead><tr><th>Vag</th><th class="r">Gross-e</th><th class="r">%</th><th class="r">Bank</th><th class="r">Cash</th><th>Cash kivabe</th></tr></thead>
+              <tbody>${partRows}</tbody>
+              <tfoot><tr><td>Mot</td><td class="r">${money(s.gross)}</td><td class="r">100%</td><td class="r">${money(s.bank.Total)}</td><td class="r">${money(s.cash.Total)}</td><td></td></tr></tfoot>
+            </table></div>
+            <div class="calc">Round korar por baki Basic-e: cash ${money(s.cash.Total)} − ${money(nonBasicCash)} = ${money(s.cash.Basic)}, bank ${money(s.bank.Total)} − ${money(nonBasicBank)} = ${money(s.bank.Basic)}</div>
+          </li>
+          <li><b>Deduction (shudhu bank theke)</b><div class="calc">${step5}</div></li>
+          <li><b>Check</b><div class="calc"><span class="${ok ? 'pass' : 'warn'}">${step6}</span></div></li>
+        </ol>`;
+      traceEl.querySelector('.close').addEventListener('click', hideTrace);
+      traceEl.classList.remove('hidden');
+      traceEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    cashOnly.addEventListener('change', renderCashTable);
+
+    cashForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!session || !cashTable) return;
+      const cutoff = $('cutoff').value;
+      if (!cutoff) { setStatus(cashStatus, 'warn', 'Pick a cut-off date.'); return; }
+
+      const reqId = ++cashRequestId;
+      cashBtn.disabled = true;
+      cashBtn.textContent = 'Calculating…';
+      cashStatus.className = 'status ok';
+      cashStatus.textContent = `Reading ${cashTable.name} and calculating…`;
+
+      try {
+        const data = await postJSON('/api/cash-slips', { ...session, schema: cashTable.schema, table: cashTable.name, cutoff });
+        if (reqId !== cashRequestId) return;
+        cashResult = data;
+        const s = data.summary;
+        const k = data.skipped;
+
+        cashStats.innerHTML = '';
+        cashStats.append(
+          stat(s.totalRows.toLocaleString(), 'rows read'),
+          stat(s.qualified.toLocaleString(), 'pass threshold'),
+          stat(s.withCash.toLocaleString(), 'with cash'),
+          stat(money(s.totalCash), 'total cash (৳)'),
+          stat(money(s.totalBank), 'total bank (৳)'),
+        );
+        cashStats.classList.remove('hidden');
+
+        const src = s.bySource;
+        let msg = `Ratio source — employee: ${src.employee || 0}, designation: ${src.designation || 0}, default 1.0: ${src.default || 0}. ` +
+          `Skipped — below threshold: ${k.belowThreshold}, gross 0: ${k.noGross}, separated before cut-off: ${k.separated}, unreadable DOJ: ${k.badDOJ}.`;
+        const bad = data.badRows.length ? 'Unreadable DOJ: ' + data.badRows.map((r) => `${r.code} (${r.DOJ})`).join(', ') : '';
+        setStatus(cashStatus, k.badDOJ || src.default ? 'warn' : 'ok', msg, bad);
+
+        renderCashTable();
+        cashActions.classList.remove('hidden');
+        cashWrap.classList.remove('hidden');
+        $('trace-hint').classList.remove('hidden');
+      } catch (err) {
+        if (reqId !== cashRequestId) return;
+        setStatus(cashStatus, 'warn', err.message || 'Cash calculation failed.', err.detail);
+        console.warn('[DB Explorer] Cash slips failed:', err);
+      } finally {
+        cashBtn.disabled = false;
+        cashBtn.textContent = 'Calculate cash part';
+      }
+    });
+
+    const PARTS = ['Basic', 'HouseRent', 'Medical', 'Conveyance', 'Others'];
+    const PART_LABEL = { Basic: 'Basic', HouseRent: 'House rent', Medical: 'Medical', Conveyance: 'Conveyance', Others: 'Other allowances' };
+
+    $('csv-btn').addEventListener('click', () => {
+      const slips = shownSlips();
+      if (!slips.length) return;
+      const head = ['EmployeeCode', 'DisplayEmployeeCode', 'EmployeeName', 'Designation', 'Department', 'Unit', 'DOJ', 'Gross', 'CashRatio', 'RatioSource',
+        ...PARTS.map((p) => 'Bank_' + p), 'Bank_Total', 'Deductions', 'Net_Bank', ...PARTS.map((p) => 'Cash_' + p), 'Cash_Total'];
+      const esc = (v) => { const t = String(v ?? ''); return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+      const lines = [head.join(',')];
+      for (const s of slips) {
+        lines.push([s.code, s.displayCode, s.name, s.designation, s.department, s.unit, s.doj, s.gross, s.ratio, s.ratioSource,
+          ...PARTS.map((p) => s.bank[p]), s.bank.Total, s.deductions, s.netBank, ...PARTS.map((p) => s.cash[p]), s.cash.Total].map(esc).join(','));
+      }
+      // BOM so Excel opens Bangla/UTF-8 names correctly.
+      const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `cash_slips_${cashResult.table}_${cashResult.summary.cutoff}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+
+    $('print-btn').addEventListener('click', () => {
+      const slips = shownSlips();
+      if (!slips.length) return;
+      const cutoff = new Date(cashResult.summary.cutoff + 'T00:00:00');
+      const month = cutoff.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      const h = (v) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+      const rowsFor = (part) => PARTS.filter((p) => part[p]).map((p) => `<tr><td>${PART_LABEL[p]}</td><td class="r">${money(part[p])}</td></tr>`).join('');
+
+      const body = slips.map((s) => `
+        <section class="slip">
+          <header><h1>Salary slip — ${h(month)}</h1><span>Cash part</span></header>
+          <table class="info">
+            <tr><th>Employee code</th><td>${h(s.displayCode)}</td><th>Designation</th><td>${h(s.designation)}</td></tr>
+            <tr><th>Name</th><td>${h(s.name)}</td><th>Department</th><td>${h(s.department)}</td></tr>
+            <tr><th>Date of joining</th><td>${h(s.doj)}</td><th>Unit</th><td>${h(s.unit)}</td></tr>
+          </table>
+          <div class="cols">
+            <table><thead><tr><th colspan="2">Cash part</th></tr></thead><tbody>${rowsFor(s.cash)}</tbody>
+              <tfoot><tr><td>Total cash</td><td class="r">${money(s.cash.Total)}</td></tr></tfoot></table>
+          </div>
+          <footer><span>Received by</span><span>Authorised signature</span></footer>
+        </section>`).join('');
+
+      const w = window.open('', '_blank');
+      if (!w) { alert('Allow pop-ups for this page to print slips.'); return; }
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cash slips ${h(month)}</title><style>
+        body { font: 13px/1.4 system-ui, "Segoe UI", sans-serif; color: #111; background: #fff; margin: 16px; }
+        .slip { border: 1px solid #333; padding: 14px 16px; margin: 0 auto 16px; max-width: 720px; break-inside: avoid; page-break-inside: avoid; }
+        .slip header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #00bab5; padding-bottom: 6px; margin-bottom: 10px; }
+        .slip h1 { font-size: 16px; margin: 0; }
+        .slip header span { font-weight: 600; color: #00807c; }
+        table { width: 100%; border-collapse: collapse; }
+        .info th { text-align: left; font-weight: 600; color: #444; width: 18%; padding: 2px 6px 2px 0; }
+        .info td { padding: 2px 12px 2px 0; }
+        .cols { margin-top: 10px; }
+        .cols th { text-align: left; background: #eef9f9; padding: 4px 8px; border: 1px solid #ccc; }
+        .cols td { padding: 3px 8px; border: 1px solid #ddd; }
+        .cols tfoot td { font-weight: 700; border-top: 2px solid #333; }
+        .r { text-align: right; font-variant-numeric: tabular-nums; }
+        .slip footer { display: flex; justify-content: space-between; margin-top: 36px; }
+        .slip footer span { border-top: 1px solid #333; padding-top: 4px; min-width: 180px; text-align: center; }
+        @media print { body { margin: 0; } .slip { margin-bottom: 10mm; } }
+      </style></head><body>${body}</body></html>`);
+      w.document.close();
+      w.focus();
+      w.print();
+    });
 </script>
 </body>
 </html>

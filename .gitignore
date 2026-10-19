@@ -1,2 +1,7 @@
 node_modules/
 .claude/
+
+# Confidential payroll inputs - never commit
+docs/
+data/
+docs/
