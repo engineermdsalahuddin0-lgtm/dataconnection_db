@@ -31,9 +31,10 @@
 
    The app applies the rules itself, in this order:
      1. anyone with a DOS is excluded (not active)
-     2. DOJ before 1 Sep 2026  -> needs OrgGross >= 60,000
-        DOJ on/after 1 Sep 2026 -> needs OrgGross >= 100,000
-     3. the rest are split into bank / cash by their ratio
+     2. actual gross = OrgGross x ratio
+        DOJ before 1 Sep 2026   -> needs actual gross >= 60,000
+        DOJ on/after 1 Sep 2026 -> needs actual gross >= 100,000
+     3. bank = OrgGross, cash = actual gross - OrgGross
    So the queries below do NOT need to filter on DOS or salary themselves.
    ============================================================================= */
 
@@ -121,7 +122,8 @@ WHERE s.SalaryProcID = 'YOUR_SALARY_PROC_ID'
 
 /* -----------------------------------------------------------------------------
    4. NEW JOINERS ONLY  (DOJ on or after 1 Sep 2026)
-   These employees need OrgGross >= 100,000 to get cash; the app checks that.
+   These employees need an actual gross (OrgGross x ratio) >= 100,000 to get
+   cash; the app checks that.
    ----------------------------------------------------------------------------- */
 SELECT
     s.EmployeeCode, e.DisplayEmployeeCode, e.EmployeeName,
@@ -153,11 +155,12 @@ ORDER BY s.OrgGross DESC;
 
 /* -----------------------------------------------------------------------------
    6. CHECK THE CALCULATION ON ONE KNOWN EMPLOYEE
-   For the July 2026 month, employee 00012 is expected to show OrgGross 86,228
-   (the full gross, as in the reference file). Click the row to open the trace:
-   Bank should be 60,360 and Total Cash 25,868 (ratio 1.428562).
-   If OrgGross shows 60,360 instead, OrgGross is the bank part only, and the
-   formula needs to change - report it before printing any slips.
+   For the July 2026 month, employee 00012 is expected to show OrgGross 60,360
+   (the bank part, as orgGross_Jul2026 in the reference file). Click the row to
+   open the trace: Actual gross should be 86,228 (60,360 x 1.428562),
+   Bank 60,360 and Total Cash 25,868.
+   If OrgGross shows 86,228 instead, OrgGross already holds the full gross and
+   the cash would be counted twice - report it before printing any slips.
    ----------------------------------------------------------------------------- */
 SELECT
     s.EmployeeCode, e.DisplayEmployeeCode, e.EmployeeName,

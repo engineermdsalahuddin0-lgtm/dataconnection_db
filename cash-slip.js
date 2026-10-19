@@ -3,17 +3,22 @@
 /*
  * Cash / bank salary split for cash slips.
  *
- * "Gross" is OrgGross from MonthWiseSalaryInfo (see salary-source.js), the gross the
- * salary is split from. Each employee's CashRatio gives:
- *   bank = Gross / ratio,  cash = Gross - bank.
- * Both parts are split over Basic / HouseRent / Medical / Conveyance in the same
- * proportion as OrgBasic / OrgHouseRent / OrgMedical / OrgConvence to OrgGross.
+ * "Gross" is OrgGross from the salary table: the official (bank) gross. Each employee's
+ * CashRatio (= ActualGross / OrgGross in the reference file) gives:
+ *   bank   = OrgGross
+ *   actual = OrgGross x ratio
+ *   cash   = actual - OrgGross
+ * Cash and bank are each split over Basic / HouseRent / Medical / Conveyance in the
+ * proportion OrgBasic / OrgHouseRent / OrgMedical / OrgConvence have to OrgGross
+ * (read per employee from the database). Basic takes the rounding remainder.
  * Ratio lookup: employee's own ratio -> designation average -> 1.0 (no cash).
  *
  * Eligibility, checked in this order:
  *   1. DOS present (any date)  -> not active, excluded
- *   2. joined before cut-off   -> Gross >= 60,000
- *      joined on/after cut-off -> Gross >= 100,000   (cut-off: 1 Sep 2026 by default)
+ *   2. joined before cut-off   -> actual gross >= 60,000
+ *      joined on/after cut-off -> actual gross >= 100,000   (cut-off: 1 Sep 2026 by default)
+ * The threshold is on the actual gross: in the July 2026 reference data every employee
+ * with actual >= 60,000 has a ratio above 1 and everyone below has ratio 1.
  */
 
 const fs = require('fs');
@@ -131,27 +136,28 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
     const dos = toYMD(get('DOS'));
     if (dos !== null) { skipped.separated++; continue; }
 
-    // 2. Then the salary threshold, which depends on DOJ.
     if (gross <= 0) { skipped.noGross++; continue; }
 
     const doj = toYMD(get('DOJ'));
     if (!doj) { skipped.badDOJ++; badRows.push({ ...ident, DOJ: String(get('DOJ')) }); continue; }
 
-    const joinedBefore = doj < cutoff;
-    const threshold = joinedBefore ? THRESHOLD_BEFORE : THRESHOLD_AFTER;
-    if (gross < threshold) { skipped.belowThreshold++; continue; }
-
+    // 2. Actual gross = OrgGross x ratio; the threshold (by DOJ) applies to it.
     const lookup = lookupRatio(ratios, [['EmployeeCode', code], ['DisplayEmployeeCode', get('DisplayEmployeeCode')]], get('Designation'));
     const { ratio, source } = lookup;
+    const actualExact = gross * ratio;
+    const actual = Math.round(actualExact);
+
+    const joinedBefore = doj < cutoff;
+    const threshold = joinedBefore ? THRESHOLD_BEFORE : THRESHOLD_AFTER;
+    if (actual < threshold) { skipped.belowThreshold++; continue; }
 
     const parts = {};
     for (const k of COMPONENTS) parts[k] = num(get(k));
     // Basic takes whatever the Org heads do not add up to, so the slip shows only four heads.
     const partsSum = COMPONENTS.reduce((s, k) => s + parts[k], 0);
 
-    const bankExact = gross / ratio;
-    const bankTotal = Math.round(bankExact);
-    const cashTotal = gross - bankTotal;
+    const bankTotal = gross;
+    const cashTotal = actual - gross;
 
     slips.push({
       ...ident,
@@ -161,6 +167,7 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
       unit: get('Unit') || '',
       doj,
       gross,
+      actual,
       threshold,
       ratio: Number(ratio.toFixed(6)),
       ratioSource: source,
@@ -180,7 +187,7 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
           matchedKey: lookup.matchedKey,
         },
         ratioExact: ratio,
-        bankExact,
+        actualExact,
         salaryProcId: get('SalaryProcID') == null ? null : String(get('SalaryProcID')),
         parts,
         partsSum,
@@ -202,6 +209,7 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
       withCash: withCash.length,
       totalCash: withCash.reduce((s, x) => s + x.cash.Total, 0),
       totalBank: slips.reduce((s, x) => s + x.bank.Total, 0),
+      totalActual: slips.reduce((s, x) => s + x.actual, 0),
       bySource: slips.reduce((acc, s) => ((acc[s.ratioSource] = (acc[s.ratioSource] || 0) + 1), acc), {}),
       ratiosGeneratedAt: ratios.generatedAt,
     },

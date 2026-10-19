@@ -7,6 +7,7 @@ const sql = require('mssql');
 const { buildCashSlips, DEFAULT_CUTOFF } = require('./cash-slip');
 const salarySource = require('./salary-source');
 const savedConnection = require('./saved-connection');
+const savedQueries = require('./saved-queries');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
@@ -22,9 +23,9 @@ const SYSTEM_DBS = {
 // The read endpoints use POST only so DB credentials travel in the request body,
 // not in the URL (where they would land in browser history and logs). Nothing
 // else may be posted, and no other write-style method is accepted at all.
-const READ_ENDPOINTS = new Set(['/api/connect', '/api/tables', '/api/columns', '/api/salary-source', '/api/cash-slips', '/api/query-slips', '/api/distinct-values']);
-// These write ONLY to the local data/connection.json file (remember-me), never to the database.
-const LOCAL_SETTINGS_ENDPOINTS = new Set(['/api/saved-connection', '/api/saved-connection/last', '/api/saved-connection/forget']);
+const READ_ENDPOINTS = new Set(['/api/connect', '/api/tables', '/api/columns', '/api/salary-source', '/api/cash-slips', '/api/query-slips', '/api/distinct-values', '/api/run-query']);
+// These write ONLY to local files in data/ (saved connection, saved queries), never to the database.
+const LOCAL_SETTINGS_ENDPOINTS = new Set(['/api/saved-connection', '/api/saved-connection/last', '/api/saved-connection/forget', '/api/saved-queries/save', '/api/saved-queries/delete']);
 const POST_ALLOWED = new Set([...READ_ENDPOINTS, ...LOCAL_SETTINGS_ENDPOINTS]);
 
 const app = express();
@@ -662,6 +663,40 @@ app.post('/api/cash-slips', async (req, res) => {
   }
 });
 
+// Endpoint 8: run any read-only SELECT and return the raw rows (SQL query tab).
+const RUN_ROW_LIMIT = 1000;
+
+/** Makes a DB value JSON-safe for display: dates as ISO text, binary as short hex. */
+function displayValue(v) {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString().replace('T00:00:00.000Z', '').replace('.000Z', 'Z');
+  if (Buffer.isBuffer(v)) return `0x${v.subarray(0, 32).toString('hex')}${v.length > 32 ? '…' : ''}`;
+  if (typeof v === 'bigint') return v.toString();
+  return v;
+}
+
+app.post('/api/run-query', async (req, res) => {
+  let c;
+  try {
+    const body = await savedConnection.resolve(req.body || {});
+    c = parseCredentials(body, { requireDatabase: true });
+    const text = String(body.sql || '');
+    if (!text.trim()) throw new ValidationError('Write or paste a SELECT query first.');
+    if (text.length > 20000) throw new ValidationError('The query is too long (max 20,000 characters).');
+    assertReadOnly(text); // refuse writes before even connecting (checked again when it runs)
+
+    const started = Date.now();
+    const { rows, columns } = await withReader(c, (reader) => reader.queryLimited(text, RUN_ROW_LIMIT + 1));
+    const ms = Date.now() - started;
+    const names = columns.length ? columns : Object.keys(rows[0] || {});
+    const truncated = rows.length > RUN_ROW_LIMIT;
+    const out = rows.slice(0, RUN_ROW_LIMIT).map((r) => names.map((n) => displayValue(r[n])));
+    console.log(`\n[run-query] ${c.database} — ${out.length}${truncated ? '+' : ''} row(s) in ${ms} ms`);
+    res.json({ ok: true, columns: names, rows: out, truncated, limit: RUN_ROW_LIMIT, ms });
+  } catch (err) {
+    sendError(res, err, c);
+  }
+});
+
 // Endpoint 7: distinct values of one column with row counts, newest first (salary month list
 // for the Manual mapping panel). The table and column are checked against INFORMATION_SCHEMA first.
 app.post('/api/distinct-values', async (req, res) => {
@@ -750,6 +785,32 @@ app.post('/api/query-slips', async (req, res) => {
     }
     sendError(res, err, c);
   }
+});
+
+/* Saved queries (SQL query tab): local file only (data/saved-queries.json). */
+
+app.get('/api/saved-queries', (req, res) => {
+  res.json({ ok: true, queries: savedQueries.list() });
+});
+
+app.post('/api/saved-queries/save', (req, res) => {
+  try {
+    const b = req.body || {};
+    const query = savedQueries.save({ id: b.id, name: b.name, sql: b.sql, database: b.database }, assertReadOnly);
+    console.log(`[saved-queries] saved "${query.name}"`);
+    res.json({ ok: true, query, queries: savedQueries.list() });
+  } catch (err) {
+    if (err instanceof savedQueries.SavedQueryError) {
+      return res.status(400).json({ ok: false, error: { type: 'VALIDATION_ERROR', severity: 'warning', message: err.message } });
+    }
+    console.warn(`[warning] SAVE_QUERY_FAILED: ${err.message}`);
+    res.status(500).json({ ok: false, error: { type: 'SAVE_FAILED', severity: 'warning', message: `Could not save the query: ${err.message}` } });
+  }
+});
+
+app.post('/api/saved-queries/delete', (req, res) => {
+  const removed = savedQueries.remove(String((req.body || {}).id || ''));
+  res.json({ ok: true, removed, queries: savedQueries.list() });
 });
 
 /* Remember-me: local file only (data/connection.json). The password is never sent back. */

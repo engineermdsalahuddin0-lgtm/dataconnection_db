@@ -218,157 +218,347 @@
     .trace .pass { color: var(--ok); font-weight: 600; }
     .trace .warn { color: var(--danger); font-weight: 600; }
     .trace .close { float: right; width: auto; margin: 0; padding: 4px 12px; font-size: 13px; }
+
+    /* ---------- App shell: sidebar + tabs ---------- */
+    .app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+    .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 18px 12px; background: var(--panel); border-right: 1px solid var(--border); }
+    .brand { padding: 0 8px; }
+    .brand-name { font-size: 18px; font-weight: 700; }
+    .brand .readonly-note { margin-top: 6px; }
+    .nav { display: grid; gap: 4px; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: var(--text); text-decoration: none; font-weight: 500; }
+    .nav-item svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+    .nav-item:hover { background: var(--accent-soft); }
+    .nav-item:focus-visible, .subtabs button:focus-visible, .menu-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .nav-item[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .nav-item[aria-current="page"] svg { color: var(--accent); }
+    .soon { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--border); color: var(--muted); }
+    h2 .soon { margin-left: 8px; text-transform: none; letter-spacing: 0; }
+    .conn-badge { margin-top: auto; display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+    .conn-badge .dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--muted); flex: none; }
+    .conn-badge.on .dot { background: var(--ok); }
+    .content { min-width: 0; }
+    .topbar { display: flex; align-items: center; gap: 12px; max-width: 1180px; margin: 0; padding: 22px 24px 4px; }
+    .topbar h1 { margin: 0; font-size: 22px; }
+    .page-sub { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+    .menu-btn { display: none; width: auto; margin: 0; padding: 8px; color: var(--text); background: var(--panel); border: 1px solid var(--border); }
+    .menu-btn:hover { background: var(--accent-soft); }
+    .tab { max-width: 1180px; padding: 16px 24px 40px; }
+    .db-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
+    @media (max-width: 1180px) { .db-layout { grid-template-columns: minmax(0, 1fr); } }
+    .subtabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+    .subtabs button { width: auto; margin: 0; padding: 10px 14px; color: var(--muted); background: none; border-radius: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
+    .subtabs button:hover { background: none; color: var(--text); }
+    .subtabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+    .need-db { text-align: center; padding: 36px 18px; }
+    .need-db p { color: var(--muted); margin: 0 0 16px; }
+    a.btn { display: inline-block; padding: 10px 18px; border-radius: 8px; font-weight: 600; color: #fff; background: var(--accent); text-decoration: none; }
+    a.btn:hover { background: var(--accent-hover); }
+    .sql-top { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 16px; }
+    @media (max-width: 1100px) { .sql-top { grid-template-columns: minmax(0, 1fr); } }
+    .sq-wrap { max-height: 420px; }
+    .sq-wrap td { padding: 7px 10px; }
+    .sq-wrap td.sq-name { font-weight: 600; overflow-wrap: anywhere; }
+    .sq-wrap td.sq-db { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+    .sq-actions { white-space: nowrap; text-align: right; }
+    .icon-btn { width: auto; margin: 0 0 0 4px; padding: 4px 9px; font-size: 12px; line-height: 1.4; }
+    .icon-btn.danger { background: var(--danger-soft); color: var(--danger); }
+    .icon-btn.danger:hover { background: var(--danger-soft); outline: 1px solid var(--danger); }
+    .sq-namebar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+    .sq-namebar input { flex: 1; }
+    .sq-dirty { font-size: 12px; font-weight: 600; color: #8a5a00; white-space: nowrap; }
+    @media (prefers-color-scheme: dark) { .sq-dirty { color: #f2c661; } }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .sql-result { max-height: 520px; }
+    .sql-result th { white-space: nowrap; }
+    .sql-result td { font-family: var(--mono); font-size: 13px; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+    .sql-result td.null { color: var(--muted); font-style: italic; }
+    .placeholder p { color: var(--muted); }
+    .placeholder-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .placeholder-actions button { width: auto; margin: 0; padding: 10px 16px; }
+    button:disabled { cursor: not-allowed; }
+    @media (max-width: 860px) {
+      .app { grid-template-columns: minmax(0, 1fr); }
+      .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 40; width: 280px; max-width: 85vw; transform: translateX(-100%); visibility: hidden; transition: transform .2s ease, visibility 0s linear .2s; }
+      .sidebar.open { transform: none; visibility: visible; box-shadow: 0 0 40px rgba(0, 0, 0, .3); transition: transform .2s ease; }
+      .scrim { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, .4); }
+      .menu-btn { display: inline-flex; }
+      .topbar { position: sticky; top: 0; z-index: 20; padding: 10px 16px; background: var(--bg); border-bottom: 1px solid var(--border); }
+      .topbar h1 { font-size: 18px; }
+      .page-sub { display: none; }
+      .tab { padding: 14px 16px 32px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .sidebar, .sidebar.open { transition: none; } }
   </style>
 </head>
 <body>
-  <header>
-    <h1>DB Explorer</h1>
-    <p>Connect to a MySQL or SQL Server instance and browse its databases and tables.</p>
-    <span class="readonly-note" title="Only SELECT / SHOW queries are sent. Nothing on the server can be changed.">🔒 Read-only: data is only read, never changed</span>
-  </header>
-
-  <main>
-    <!-- Connection form -->
-    <section class="panel">
-      <h2>Connection</h2>
-      <form id="connect-form" novalidate>
-        <label for="engine">Database engine</label>
-        <select id="engine" name="engine">
-          <option value="mysql">MySQL</option>
-          <option value="mssql">SQL Server (MSSQL)</option>
-        </select>
-
-        <label for="host">Host / IP address</label>
-        <input id="host" name="host" placeholder="e.g. 127.34.7.10" required autocomplete="off" />
-
-        <label for="port">Port <span class="hint">(optional)</span></label>
-        <input id="port" name="port" type="number" min="1" max="65535" placeholder="3306" />
-
-        <label for="user">Username</label>
-        <input id="user" name="user" required autocomplete="username" />
-
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" />
-
-        <label for="database">Database name <span class="hint">(optional)</span></label>
-        <input id="database" name="database" placeholder="Leave empty to list all databases" autocomplete="off" />
-        <p class="field-note">If you know the name, tables load directly. This works even if the user can't list databases.</p>
-
-        <label class="check hidden" id="encrypt-row">
-          <input type="checkbox" id="encrypt" name="encrypt" /> Encrypt connection (TLS)
-        </label>
-        <label class="check">
-          <input type="checkbox" id="hideSystem" name="hideSystem" /> Hide system databases
-        </label>
-        <label class="check">
-          <input type="checkbox" id="remember" /> Save this connection <span class="hint">(auto-connect next time)</span>
-        </label>
-        <p class="field-note">Saved on this PC only in <code>data/connection.json</code>. The password is encrypted for your Windows user and never sent back to the browser.</p>
-
-        <button type="submit" id="connect-btn">Connect &amp; Fetch Databases</button>
-      </form>
-      <div id="status" class="status hidden" role="status"></div>
-      <div id="saved-row" class="saved-row hidden">
-        <span id="saved-note"></span>
-        <button type="button" id="forget-btn" class="secondary">Forget saved connection</button>
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <div class="brand">
+        <div class="brand-name">DB Explorer</div>
+        <span class="readonly-note" title="Only SELECT / SHOW queries are sent. Nothing on the server can be changed.">🔒 Read-only</span>
       </div>
-    </section>
+      <nav class="nav">
+        <a href="#db" class="nav-item" data-tab="db"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Database connection</span></a>
+        <a href="#overview" class="nav-item" data-tab="overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/></svg><span>Overview</span><span class="soon">Soon</span></a>
+        <a href="#sql" class="nav-item" data-tab="sql"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 9-3 3 3 3"/><path d="m16 9 3 3-3 3"/><path d="m13.5 6-3 12"/></svg><span>SQL query</span></a>
+        <a href="#payroll" class="nav-item" data-tab="payroll"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M7 12h.01M17 12h.01"/></svg><span>Payroll</span></a>
+        <a href="#separation" class="nav-item" data-tab="separation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M17 11h5"/></svg><span>User separation</span><span class="soon">Soon</span></a>
+      </nav>
+      <div class="conn-badge" id="conn-badge" role="status"><span class="dot"></span><span id="conn-text">Not connected</span></div>
+    </aside>
+    <div class="scrim" id="scrim" hidden></div>
 
-    <!-- Results -->
-    <section class="results">
-      <div class="panel">
-        <h2>Databases</h2>
-        <input id="db-filter" class="filter hidden" placeholder="Filter databases…" />
-        <ul id="db-list" class="db-list"></ul>
-        <p id="db-empty" class="empty">Connect to a server to list its databases.</p>
-      </div>
+    <div class="content">
+      <header class="topbar">
+        <button type="button" class="menu-btn" id="menu-btn" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <div>
+          <h1 id="page-title">Database connection</h1>
+          <p id="page-sub" class="page-sub"></p>
+        </div>
+      </header>
 
-      <div class="stack">
-        <div class="panel">
-          <h2 id="tables-title">Tables</h2>
-          <p id="tables-meta" class="meta hidden"></p>
-          <div id="tables-wrap" class="table-wrap hidden">
-            <table>
-              <thead><tr><th>#</th><th>Schema</th><th>Table name</th><th>Type</th></tr></thead>
-              <tbody id="tables-body" class="clickable"></tbody>
-            </table>
+      <!-- Tab: Database connection -->
+      <section class="tab" id="tab-db" data-title="Database connection" data-sub="Connect to MySQL or SQL Server and browse its databases and tables.">
+        <div class="db-layout">
+          <!-- Connection form -->
+          <section class="panel">
+            <h2>Connection</h2>
+            <form id="connect-form" novalidate>
+              <label for="engine">Database engine</label>
+              <select id="engine" name="engine">
+                <option value="mysql">MySQL</option>
+                <option value="mssql">SQL Server (MSSQL)</option>
+              </select>
+
+              <label for="host">Host / IP address</label>
+              <input id="host" name="host" placeholder="e.g. 127.34.7.10" required autocomplete="off" />
+
+              <label for="port">Port <span class="hint">(optional)</span></label>
+              <input id="port" name="port" type="number" min="1" max="65535" placeholder="3306" />
+
+              <label for="user">Username</label>
+              <input id="user" name="user" required autocomplete="username" />
+
+              <label for="password">Password</label>
+              <input id="password" name="password" type="password" autocomplete="current-password" />
+
+              <label for="database">Database name <span class="hint">(optional)</span></label>
+              <input id="database" name="database" placeholder="Leave empty to list all databases" autocomplete="off" />
+              <p class="field-note">If you know the name, tables load directly. This works even if the user can't list databases.</p>
+
+              <label class="check hidden" id="encrypt-row">
+                <input type="checkbox" id="encrypt" name="encrypt" /> Encrypt connection (TLS)
+              </label>
+              <label class="check">
+                <input type="checkbox" id="hideSystem" name="hideSystem" /> Hide system databases
+              </label>
+              <label class="check">
+                <input type="checkbox" id="remember" /> <span>Save this connection <span class="hint">(auto-connect next time)</span></span>
+              </label>
+              <p class="field-note">Saved on this PC only in <code>data/connection.json</code>. The password is encrypted for your Windows user and never sent back to the browser.</p>
+
+              <button type="submit" id="connect-btn">Connect &amp; Fetch Databases</button>
+            </form>
+            <div id="status" class="status hidden" role="status"></div>
+            <div id="saved-row" class="saved-row hidden">
+              <span id="saved-note"></span>
+              <button type="button" id="forget-btn" class="secondary">Forget saved connection</button>
+            </div>
+          </section>
+
+          <!-- Results -->
+          <section class="results">
+            <div class="panel">
+              <h2>Databases</h2>
+              <input id="db-filter" class="filter hidden" placeholder="Filter databases…" />
+              <ul id="db-list" class="db-list"></ul>
+              <p id="db-empty" class="empty">Connect to a server to list its databases.</p>
+            </div>
+
+            <div class="stack">
+              <div class="panel">
+                <h2 id="tables-title">Tables</h2>
+                <p id="tables-meta" class="meta hidden"></p>
+                <div id="tables-wrap" class="table-wrap hidden">
+                  <table>
+                    <thead><tr><th>#</th><th>Schema</th><th>Table name</th><th>Type</th></tr></thead>
+                    <tbody id="tables-body" class="clickable"></tbody>
+                  </table>
+                </div>
+                <p id="tables-empty" class="empty">Select a database to see its tables.</p>
+              </div>
+
+              <div class="panel hidden" id="detail-panel">
+                <h2 id="detail-title">Table details</h2>
+                <div id="detail-stats" class="stats hidden"></div>
+                <div id="detail-wrap" class="table-wrap hidden">
+                  <table>
+                    <thead><tr><th>#</th><th>Column</th><th>Data type</th><th>Null</th><th>Key</th><th>Default</th></tr></thead>
+                    <tbody id="detail-body"></tbody>
+                  </table>
+                </div>
+                <p id="detail-empty" class="empty">Click a table to see its columns.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Tab: Overview (placeholder) -->
+      <section class="tab" id="tab-overview" hidden data-title="Overview" data-sub="Graphical visualization of your data — coming in a future version.">
+        <div class="panel placeholder">
+          <h2>Overview <span class="soon">Coming soon</span></h2>
+          <p>Graphical visualization of your data will be available here in a future version.</p>
+          <p>Planned: charts and summary cards for the selected database, such as salary totals by month, cash versus bank parts, and headcount by department and designation.</p>
+        </div>
+      </section>
+
+      <!-- Tab: SQL query -->
+      <section class="tab" id="tab-sql" hidden data-title="SQL query" data-sub="Run any read-only SELECT and see its result, or the error it returns.">
+        <div class="panel need-db" data-need-db>
+          <h2>No database selected</h2>
+          <p>Connect to a server and select a database first.</p>
+          <a class="btn" href="#db">Open Database connection</a>
+        </div>
+        <div data-has-db hidden>
+          <div class="sql-top">
+            <div class="panel saved-panel">
+              <h2>Saved queries <span id="sq-count" class="badge"></span></h2>
+              <input id="sq-filter" class="filter" placeholder="Search saved queries…" aria-label="Search saved queries" />
+              <div id="sq-wrap" class="table-wrap sq-wrap hidden">
+                <table>
+                  <thead><tr><th>Name</th><th>Database</th><th class="r"><span class="sr-only">Actions</span></th></tr></thead>
+                  <tbody id="sq-body" class="clickable"></tbody>
+                </table>
+              </div>
+              <p id="sq-empty" class="empty">No saved queries yet. Write a query, give it a name and click <b>Save</b>.</p>
+              <p class="field-note">Click a name to load it into the editor. ▶ loads and runs it.</p>
+            </div>
+
+            <div class="panel">
+              <h2>Query <span id="sql-db" class="badge"></span></h2>
+              <div class="sq-namebar">
+                <input id="sq-name" placeholder="Query name (needed to save)" aria-label="Query name" maxlength="80" />
+                <span id="sq-dirty" class="sq-dirty"></span>
+              </div>
+              <textarea id="sql-text" class="sql-box" rows="12" spellcheck="false" aria-label="SQL query" placeholder="SELECT TOP 100 * FROM dbo.MonthWiseSalaryInfo"></textarea>
+              <div class="cash-controls">
+                <button type="button" id="sql-run-btn">Run query</button>
+                <button type="button" id="sq-save-btn" class="secondary">Save</button>
+                <button type="button" id="sq-saveas-btn" class="secondary">Save as new</button>
+                <button type="button" id="sq-new-btn" class="secondary">New</button>
+              </div>
+              <div id="sq-status" class="status hidden" role="status"></div>
+              <p class="field-note">Ctrl+Enter = Run · Ctrl+S = Save. Only SELECT runs and only SELECT can be saved (read-only). Up to 1,000 rows are shown. Use SQL Server syntax (TOP, [ ]).</p>
+            </div>
           </div>
-          <p id="tables-empty" class="empty">Select a database to see its tables.</p>
-        </div>
 
-        <div class="panel hidden" id="detail-panel">
-          <h2 id="detail-title">Table details</h2>
-          <div id="detail-stats" class="stats hidden"></div>
-          <div id="detail-wrap" class="table-wrap hidden">
-            <table>
-              <thead><tr><th>#</th><th>Column</th><th>Data type</th><th>Null</th><th>Key</th><th>Default</th></tr></thead>
-              <tbody id="detail-body"></tbody>
-            </table>
+          <div class="panel hidden" id="sql-results-panel">
+            <div class="cash-actions">
+              <h2 style="margin:0">Result</h2>
+              <span class="spacer"></span>
+              <button type="button" id="sql-csv-btn" class="secondary" disabled>Download CSV</button>
+              <button type="button" id="sql-to-payroll-btn" class="secondary">Use in Payroll → Custom query</button>
+            </div>
+            <div id="sql-status" class="status hidden" role="status"></div>
+            <p id="sql-meta" class="meta hidden" style="margin:12px 0 8px"></p>
+            <div id="sql-wrap" class="table-wrap sql-result hidden">
+              <table><thead id="sql-head"></thead><tbody id="sql-body"></tbody></table>
+            </div>
           </div>
-          <p id="detail-empty" class="empty">Click a table to see its columns.</p>
         </div>
-      </div>
-    </section>
-  </main>
+      </section>
 
-  <!-- Cash slip panels: full width below the browser, so tables and mappings have room. -->
-  <section class="wide-panels">
-    <div class="panel hidden" id="cash-panel">
-      <h2 id="cash-title">Cash slips</h2>
-      <p id="cash-source" class="meta"></p>
-      <form id="cash-form" class="cash-controls" novalidate>
-        <div>
-          <label for="salary-proc">Salary month <span class="hint">(SalaryProcID)</span></label>
-          <select id="salary-proc" required></select>
+      <!-- Tab: Payroll -->
+      <section class="tab" id="tab-payroll" hidden data-title="Payroll" data-sub="Calculate the cash part of salaries and print cash slips.">
+        <div class="panel need-db" data-need-db>
+          <h2>No database selected</h2>
+          <p>Connect to a server and select a database first.</p>
+          <a class="btn" href="#db">Open Database connection</a>
         </div>
-        <div>
-          <label for="cutoff">Cut-off date</label>
-          <input id="cutoff" type="date" value="2026-09-01" required />
+        <div data-has-db hidden>
+          <div class="subtabs" role="tablist" aria-label="Payroll method">
+            <button type="button" role="tab" id="sub-auto" data-sub="auto" aria-controls="pane-auto">Auto (MonthWise tables)</button>
+            <button type="button" role="tab" id="sub-mapping" data-sub="mapping" aria-controls="pane-mapping">Manual mapping</button>
+            <button type="button" role="tab" id="sub-query" data-sub="query" aria-controls="pane-query">Custom query</button>
+          </div>
+          <div class="subpane" id="pane-auto" role="tabpanel" aria-labelledby="sub-auto">
+            <div class="panel hidden" id="cash-panel">
+              <h2 id="cash-title">Cash slips</h2>
+              <p id="cash-source" class="meta"></p>
+              <form id="cash-form" class="cash-controls" novalidate>
+                <div>
+                  <label for="salary-proc">Salary month <span class="hint">(SalaryProcID)</span></label>
+                  <select id="salary-proc" required></select>
+                </div>
+                <div>
+                  <label for="cutoff">Cut-off date</label>
+                  <input id="cutoff" type="date" value="2026-09-01" required />
+                </div>
+                <button type="submit" id="cash-btn">Calculate cash part</button>
+              </form>
+              <p class="field-note">Actual gross = OrgGross × ratio. Joined before cut-off: actual gross ≥ 60,000; joined on/after: actual gross ≥ 100,000. Ratio: employee → designation → 1.0. Bank = OrgGross, cash = actual gross − OrgGross.</p>
+              <div id="cash-status" class="status hidden" role="status"></div>
+              <div id="cash-stats" class="stats hidden" style="margin-top:14px"></div>
+              <div id="cash-actions" class="cash-actions hidden">
+                <label class="check"><input type="checkbox" id="cash-only" checked /> Only employees with cash &gt; 0</label>
+                <span class="spacer"></span>
+                <button type="button" id="csv-btn" class="secondary">Download CSV</button>
+                <button type="button" id="print-btn">Print slips</button>
+              </div>
+              <div id="cash-wrap" class="table-wrap hidden">
+                <table>
+                  <thead><tr><th>#</th><th>Code</th><th>Name</th><th>Designation</th><th>DOJ</th><th class="r">OrgGross</th><th class="r">Ratio</th><th>Source</th><th class="r">Actual gross</th><th class="r">Bank</th><th class="r">Cash</th></tr></thead>
+                  <tbody id="cash-body" class="clickable"></tbody>
+                </table>
+              </div>
+              <p id="trace-hint" class="field-note hidden">Click a row to see its full calculation. The trace is only shown here, never on the printed slip.</p>
+              <div id="trace" class="trace hidden" aria-live="polite"></div>
+            </div>
+          </div>
+          <div class="subpane" id="pane-mapping" role="tabpanel" aria-labelledby="sub-mapping" hidden>
+            <div class="panel hidden" id="map-panel">
+              <h2>Cash slips by manual mapping</h2>
+              <p class="field-note" style="margin:0 0 12px">Pick the salary table and the employee table, then tell the app which column holds each field. Columns with matching names are picked automatically; fields still marked <span class="map-flag">needs a column</span> must be chosen by hand. If a field (for example Designation) lives in another table, use <b>+ Add table</b> to join it.</p>
+              <div id="map-body"></div>
+              <div id="map-results"></div>
+            </div>
+          </div>
+          <div class="subpane" id="pane-query" role="tabpanel" aria-labelledby="sub-query" hidden>
+            <div class="panel hidden" id="query-panel">
+              <h2>Cash slips from a custom query</h2>
+              <p class="field-note" style="margin:0 0 10px">Replace the table / column names in the template with yours, or paste your own SELECT query. Only SELECT is allowed (read-only). The result must contain these column names (rename with <code>AS</code> if needed): <code>EmployeeCode, EmployeeName, Designation, OrgGross, OrgBasic, OrgHouseRent, OrgMedical, OrgConvence, DOJ, DOS</code>.</p>
+              <textarea id="query-sql" class="sql-box" rows="16" spellcheck="false" aria-label="SQL query"></textarea>
+              <div class="cash-controls">
+                <div>
+                  <label for="query-cutoff">Cut-off date</label>
+                  <input id="query-cutoff" type="date" value="2026-09-01" />
+                </div>
+                <button type="button" id="query-template-btn" class="secondary">Reset to template</button>
+                <button type="button" id="query-run-btn">Run query</button>
+              </div>
+              <p class="field-note">Ctrl+Enter = Run. Order: anyone with a DOS is excluded → actual gross (OrgGross × ratio) ≥ 60,000 / 100,000 depending on DOJ → bank = OrgGross, cash = actual − OrgGross. Only eligible employees appear in the table. Max 5,000 rows.</p>
+              <div id="query-results"></div>
+            </div>
+          </div>
         </div>
-        <button type="submit" id="cash-btn">Calculate cash part</button>
-      </form>
-      <p class="field-note">Joined before cut-off: OrgGross ≥ 60,000. Joined on/after: OrgGross ≥ 100,000. Ratio: employee → designation → 1.0. Bank = OrgGross ÷ ratio, cash = OrgGross − bank.</p>
-      <div id="cash-status" class="status hidden" role="status"></div>
-      <div id="cash-stats" class="stats hidden" style="margin-top:14px"></div>
-      <div id="cash-actions" class="cash-actions hidden">
-        <label class="check"><input type="checkbox" id="cash-only" checked /> Only employees with cash &gt; 0</label>
-        <span class="spacer"></span>
-        <button type="button" id="csv-btn" class="secondary">Download CSV</button>
-        <button type="button" id="print-btn">Print slips</button>
-      </div>
-      <div id="cash-wrap" class="table-wrap hidden">
-        <table>
-          <thead><tr><th>#</th><th>Code</th><th>Name</th><th>Designation</th><th>DOJ</th><th class="r">OrgGross</th><th class="r">Ratio</th><th>Source</th><th class="r">Bank</th><th class="r">Cash</th></tr></thead>
-          <tbody id="cash-body" class="clickable"></tbody>
-        </table>
-      </div>
-      <p id="trace-hint" class="field-note hidden">Click a row to see its full calculation. The trace is only shown here, never on the printed slip.</p>
-      <div id="trace" class="trace hidden" aria-live="polite"></div>
-    </div>
+      </section>
 
-    <div class="panel hidden" id="map-panel">
-      <h2>Cash slips by manual mapping</h2>
-      <p class="field-note" style="margin:0 0 12px">Pick the salary table and the employee table, then tell the app which column holds each field. Columns with matching names are picked automatically; fields still marked <span class="map-flag">needs a column</span> must be chosen by hand. If a field (for example Designation) lives in another table, use <b>+ Add table</b> to join it.</p>
-      <div id="map-body"></div>
-      <div id="map-results"></div>
-    </div>
-
-    <div class="panel hidden" id="query-panel">
-      <h2>Cash slips from a custom query</h2>
-      <p class="field-note" style="margin:0 0 10px">Replace the table / column names in the template with yours, or paste your own SELECT query. Only SELECT is allowed (read-only). The result must contain these column names (rename with <code>AS</code> if needed): <code>EmployeeCode, EmployeeName, Designation, OrgGross, OrgBasic, OrgHouseRent, OrgMedical, OrgConvence, DOJ, DOS</code>.</p>
-      <textarea id="query-sql" class="sql-box" rows="16" spellcheck="false" aria-label="SQL query"></textarea>
-      <div class="cash-controls">
-        <div>
-          <label for="query-cutoff">Cut-off date</label>
-          <input id="query-cutoff" type="date" value="2026-09-01" />
+      <!-- Tab: User separation (placeholder) -->
+      <section class="tab" id="tab-separation" hidden data-title="User separation" data-sub="Employee separation and final settlement — coming soon.">
+        <div class="panel placeholder">
+          <h2>User separation <span class="soon">Coming soon</span></h2>
+          <p>This module is planned but not built yet. The buttons below are placeholders and do nothing.</p>
+          <div class="placeholder-actions">
+            <button type="button" disabled title="Coming soon">New separation</button>
+            <button type="button" class="secondary" disabled title="Coming soon">Final settlement</button>
+            <button type="button" class="secondary" disabled title="Coming soon">Separation report</button>
+          </div>
         </div>
-        <button type="button" id="query-template-btn" class="secondary">Reset to template</button>
-        <button type="button" id="query-run-btn">Run query</button>
-      </div>
-      <p class="field-note">Ctrl+Enter = Run. Order: anyone with a DOS is excluded → OrgGross ≥ 60,000 / 100,000 depending on DOJ → bank/cash split by ratio. Only eligible employees appear in the table. Max 5,000 rows.</p>
-      <div id="query-results"></div>
+      </section>
     </div>
-  </section>
+  </div>
 
   <script>
     const DEFAULT_PORTS = { mysql: 3306, mssql: 1433 };
@@ -649,6 +839,7 @@
       } finally {
         btn.disabled = false;
         btn.textContent = buttonLabel();
+        refreshDbState();
       }
     }
 
@@ -659,6 +850,7 @@
       if (!session) return false;
       session.database = dbName;
       renderDatabases(dbFilter.value);
+      refreshDbState();
 
       const reqId = ++tablesRequestId;
       resetTables(`Loading tables in ${dbName}…`);
@@ -873,14 +1065,15 @@
       shownSlips().forEach((s, i) => {
         const tr = document.createElement('tr');
         tr.innerHTML = '<td class="num"></td><td class="mono"></td><td></td><td></td><td class="mono muted"></td>' +
-          '<td class="r"></td><td class="r mono"></td><td><span class="badge"></span></td><td class="r"></td><td class="r"></td>';
+          '<td class="r"></td><td class="r mono"></td><td><span class="badge"></span></td><td class="r"></td><td class="r"></td><td class="r"></td>';
         const cells = [i + 1, s.displayCode, s.name, s.designation, s.doj, money(s.gross), s.ratio.toFixed(4)];
         cells.forEach((v, k) => { tr.children[k].textContent = v; });
         const badge = tr.children[7].firstChild;
         badge.textContent = SOURCE_LABEL[s.ratioSource];
         badge.classList.add(s.ratioSource);
-        tr.children[8].textContent = money(s.bank.Total);
-        tr.children[9].textContent = money(s.cash.Total);
+        tr.children[8].textContent = money(s.actual);
+        tr.children[9].textContent = money(s.bank.Total);
+        tr.children[10].textContent = money(s.cash.Total);
         tr.tabIndex = 0;
         tr.title = 'Click to see the full calculation';
         const open = () => showTrace(s, tr);
@@ -918,7 +1111,7 @@
         `2. DOJ      = ${h(s.doj)}${dojNote}\n` +
         `   Cut-off  = ${h(t.cutoff)}  →  ${t.joinedBefore ? 'joined BEFORE the cut-off' : 'joined ON/AFTER the cut-off'}\n` +
         `   Threshold= ${money(s.threshold)}\n` +
-        `   OrgGross = ${money(s.gross)}  ≥  ${money(s.threshold)}  ✓`;
+        `   Actual   = ${money(s.actual)}  (OrgGross ${money(s.gross)} × ratio, see step 3)  ≥  ${money(s.threshold)}  ✓`;
 
       // Step 2: ratio lookup, in the order the server tried it
       const tried = [];
@@ -939,12 +1132,13 @@
 
       // Step 3: bank / cash
       const step3 =
-        `Bank = OrgGross ÷ Ratio\n` +
-        `     = ${money(s.gross)} ÷ ${t.ratioExact}\n` +
-        `     = ${dec(t.bankExact, 4)}  →  round  →  ${money(s.bank.Total)}\n\n` +
-        `Cash = OrgGross − Bank\n` +
-        `     = ${money(s.gross)} − ${money(s.bank.Total)}  =  ${money(s.cash.Total)}\n\n` +
-        `Bank ${dec(s.bank.Total / s.gross * 100)}%  ·  Cash ${dec(s.cash.Total / s.gross * 100)}%`;
+        `Bank   = OrgGross = ${money(s.bank.Total)}\n\n` +
+        `Actual = OrgGross × Ratio\n` +
+        `       = ${money(s.gross)} × ${t.ratioExact}\n` +
+        `       = ${dec(t.actualExact, 4)}  →  round  →  ${money(s.actual)}\n\n` +
+        `Cash   = Actual − OrgGross\n` +
+        `       = ${money(s.actual)} − ${money(s.gross)}  =  ${money(s.cash.Total)}\n\n` +
+        `Of the actual gross: Bank ${dec(s.bank.Total / s.actual * 100)}%  ·  Cash ${dec(s.cash.Total / s.actual * 100)}%`;
 
       // Step 4: component split
       const partRows = PARTS.map((p) => {
@@ -965,9 +1159,9 @@
         : '';
 
       // Step 5: cross-checks
-      const ok = s.bank.Total + s.cash.Total === s.gross;
+      const ok = s.bank.Total + s.cash.Total === s.actual;
       const step5 =
-        `Bank + Cash = ${money(s.bank.Total)} + ${money(s.cash.Total)} = ${money(s.bank.Total + s.cash.Total)}  ${ok ? '✓ matches OrgGross' : '✗ does NOT match OrgGross'}\n` +
+        `Bank + Cash = ${money(s.bank.Total)} + ${money(s.cash.Total)} = ${money(s.bank.Total + s.cash.Total)}  ${ok ? '✓ matches the actual gross' : '✗ does NOT match the actual gross'}\n` +
         `On the slip = Cash Basic ${money(s.cash.Basic)} + House Rent ${money(s.cash.HouseRent)} + Medical ${money(s.cash.Medical)} + Conveyance ${money(s.cash.Conveyance)} = ${money(s.cash.Total)}`;
 
       ctx.el.innerHTML = `
@@ -1057,12 +1251,12 @@
     /** Downloads slips as CSV; refOf(slip) gives its salary reference (SalaryProcID). */
     function downloadCsv(slips, refOf, filename) {
       if (!slips.length) return;
-      const head = ['SalaryProcID', 'EmployeeCode', 'DisplayEmployeeCode', 'EmployeeName', 'Designation', 'Department', 'Unit', 'DOJ', 'OrgGross', 'CashRatio', 'RatioSource',
+      const head = ['SalaryProcID', 'EmployeeCode', 'DisplayEmployeeCode', 'EmployeeName', 'Designation', 'Department', 'Unit', 'DOJ', 'OrgGross', 'CashRatio', 'RatioSource', 'ActualGross',
         ...PARTS.map((p) => 'Bank_' + p), 'Bank_Total', ...PARTS.map((p) => 'Cash_' + p), 'Gross_Cash'];
       const esc = (v) => { const t = String(v ?? ''); return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
       const lines = [head.join(',')];
       for (const s of slips) {
-        lines.push([refOf(s), s.code, s.displayCode, s.name, s.designation, s.department, s.unit, s.doj, s.gross, s.ratio, s.ratioSource,
+        lines.push([refOf(s), s.code, s.displayCode, s.name, s.designation, s.department, s.unit, s.doj, s.gross, s.ratio, s.ratioSource, s.actual,
           ...PARTS.map((p) => s.bank[p]), s.bank.Total, ...PARTS.map((p) => s.cash[p]), s.cash.Total].map(esc).join(','));
       }
       // BOM so Excel opens Bangla/UTF-8 names correctly.
@@ -1168,7 +1362,7 @@ WHERE s.SalaryProcID = 'YOUR_SALARY_PROC_ID'   -- e.g. the SalaryProcID for Sept
         </div>
         <div id="${prefix}-wrap" class="table-wrap hidden">
           <table>
-            <thead><tr><th><input type="checkbox" id="${prefix}-all" class="row-check" aria-label="Select all" /></th><th>Employee ID</th><th>Name</th><th>Designation</th><th class="r">OrgGross</th><th class="r">Cash Basic</th><th class="r">Cash House Rent</th><th class="r">Cash Medical</th><th class="r">Cash Conveyance</th><th class="r">Total Cash</th></tr></thead>
+            <thead><tr><th><input type="checkbox" id="${prefix}-all" class="row-check" aria-label="Select all" /></th><th>Employee ID</th><th>Name</th><th>Designation</th><th class="r">OrgGross</th><th class="r">Actual Gross</th><th class="r">Cash Basic</th><th class="r">Cash House Rent</th><th class="r">Cash Medical</th><th class="r">Cash Conveyance</th><th class="r">Total Cash</th></tr></thead>
             <tbody id="${prefix}-body" class="clickable"></tbody>
           </table>
         </div>
@@ -1224,7 +1418,7 @@ WHERE s.SalaryProcID = 'YOUR_SALARY_PROC_ID'   -- e.g. the SalaryProcID for Sept
           const noCash = s.cash.Total === 0;
           if (noCash) tr.className = 'no-cash';
           tr.innerHTML = '<td><input type="checkbox" class="row-check" /></td><td class="mono"></td><td></td><td></td>' +
-            '<td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td>';
+            '<td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td>';
           const box = tr.querySelector('input');
           box.dataset.code = s.code;
           box.disabled = noCash;
@@ -1235,7 +1429,7 @@ WHERE s.SalaryProcID = 'YOUR_SALARY_PROC_ID'   -- e.g. the SalaryProcID for Sept
             if (box.checked) selected.add(s.code); else selected.delete(s.code);
             updateSelection();
           });
-          const cells = [s.displayCode, s.name, s.designation, money(s.gross), money(s.cash.Basic), money(s.cash.HouseRent), money(s.cash.Medical), money(s.cash.Conveyance), money(s.cash.Total)];
+          const cells = [s.displayCode, s.name, s.designation, money(s.gross), money(s.actual), money(s.cash.Basic), money(s.cash.HouseRent), money(s.cash.Medical), money(s.cash.Conveyance), money(s.cash.Total)];
           cells.forEach((v, k) => { tr.children[k + 1].textContent = v; });
           tr.tabIndex = 0;
           tr.title = 'Click to see the full calculation';
@@ -1684,6 +1878,326 @@ WHERE s.SalaryProcID = 'YOUR_SALARY_PROC_ID'   -- e.g. the SalaryProcID for Sept
         mapView.run(buildMappingSql(), $('map-cutoff').value, $('map-run-btn'), 'Run');
       });
     }
+
+    /* ----------------------- App shell: sidebar + tabs ----------------------- */
+
+    const TABS = ['db', 'overview', 'sql', 'payroll', 'separation'];
+    const sidebar = $('sidebar');
+    const scrim = $('scrim');
+    const menuBtn = $('menu-btn');
+
+    function setDrawer(open) {
+      sidebar.classList.toggle('open', open);
+      scrim.hidden = !open;
+      menuBtn.setAttribute('aria-expanded', String(open));
+      if (open) { const cur = sidebar.querySelector('[aria-current="page"]'); if (cur) cur.focus(); }
+    }
+    menuBtn.addEventListener('click', () => setDrawer(!sidebar.classList.contains('open')));
+    scrim.addEventListener('click', () => setDrawer(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && sidebar.classList.contains('open')) { setDrawer(false); menuBtn.focus(); }
+    });
+    for (const a of document.querySelectorAll('.nav-item')) a.addEventListener('click', () => setDrawer(false));
+
+    function showTab(name) {
+      if (!TABS.includes(name)) name = 'db';
+      for (const t of TABS) $(`tab-${t}`).hidden = t !== name;
+      for (const a of document.querySelectorAll('.nav-item')) {
+        if (a.dataset.tab === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      }
+      const tab = $(`tab-${name}`);
+      $('page-title').textContent = tab.dataset.title;
+      $('page-sub').textContent = tab.dataset.sub || '';
+      document.title = `${tab.dataset.title} · DB Explorer`;
+      writePref('tab', name);
+      refreshDbState();
+    }
+    window.addEventListener('hashchange', () => { showTab(location.hash.slice(1)); window.scrollTo(0, 0); });
+
+    /** Shows or hides the "select a database first" notices and updates the sidebar badge. */
+    function refreshDbState() {
+      const db = session && session.database;
+      for (const el of document.querySelectorAll('[data-need-db]')) el.hidden = Boolean(db);
+      for (const el of document.querySelectorAll('[data-has-db]')) el.hidden = !db;
+      $('conn-badge').classList.toggle('on', Boolean(session));
+      $('conn-text').textContent = session
+        ? `${session.user}@${session.host}:${session.port}${db ? ` / ${db}` : ' (no database selected)'}`
+        : 'Not connected';
+      $('sql-db').textContent = db || '';
+      loadSqlFor(db);
+    }
+
+    /* ---- Payroll sub-tabs ---- */
+    const SUBS = ['auto', 'mapping', 'query'];
+    function showSub(name) {
+      if (!SUBS.includes(name)) name = 'auto';
+      for (const sub of SUBS) {
+        const on = sub === name;
+        $(`pane-${sub}`).hidden = !on;
+        $(`sub-${sub}`).setAttribute('aria-selected', String(on));
+        $(`sub-${sub}`).tabIndex = on ? 0 : -1;
+      }
+      writePref('payrollSub', name);
+    }
+    for (const b of document.querySelectorAll('.subtabs button')) {
+      b.addEventListener('click', () => showSub(b.dataset.sub));
+      b.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const i = SUBS.indexOf(b.dataset.sub) + (e.key === 'ArrowRight' ? 1 : -1);
+        const next = SUBS[(i + SUBS.length) % SUBS.length];
+        showSub(next);
+        $(`sub-${next}`).focus();
+      });
+    }
+
+    /* ---- SQL query tab ---- */
+    const sqlText = $('sql-text');
+    const sqlRunBtn = $('sql-run-btn');
+    const sqlStatus = $('sql-status');
+    const sqlKey = (db) => `sqlTab:${db}`;
+    let sqlDb = null;
+    let sqlResult = null;
+    let sqlRequestId = 0;
+
+    function resetSqlResult() {
+      sqlRequestId++;
+      sqlResult = null;
+      $('sql-head').innerHTML = '';
+      $('sql-body').innerHTML = '';
+      for (const el of [sqlStatus, $('sql-meta'), $('sql-wrap'), $('sql-results-panel')]) el.classList.add('hidden');
+      $('sql-csv-btn').disabled = true;
+    }
+
+    /** Restores the query typed last time for this database. */
+    function loadSqlFor(db) {
+      if (db === sqlDb) return;
+      sqlDb = db;
+      resetSqlResult();
+      sqlText.value = db ? readPref(sqlKey(db)) || '' : '';
+      restoreCurrentQuery();
+    }
+    sqlText.addEventListener('input', () => { if (sqlDb) writePref(sqlKey(sqlDb), sqlText.value); updateDirty(); });
+    sqlText.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runSql(); }
+      if (e.key.toLowerCase() === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveQuery(false); }
+    });
+    sqlRunBtn.addEventListener('click', () => runSql());
+
+    async function runSql() {
+      if (!session || !session.database) return;
+      resetSqlResult();
+      $('sql-results-panel').classList.remove('hidden');
+      const reqId = sqlRequestId;
+      sqlRunBtn.disabled = true;
+      sqlRunBtn.textContent = 'Running…';
+      setStatus(sqlStatus, 'ok', 'Running the query…');
+      try {
+        const data = await postJSON('/api/run-query', { ...session, sql: sqlText.value });
+        if (reqId !== sqlRequestId) return;
+        sqlResult = data;
+        setStatus(sqlStatus, 'ok', 'Query ran successfully.');
+        const meta = $('sql-meta');
+        meta.textContent = `${data.rows.length.toLocaleString()} row(s), ${data.columns.length} column(s) · ${data.ms.toLocaleString()} ms` +
+          (data.truncated ? ` · showing the first ${data.limit.toLocaleString()} rows only (add TOP or WHERE to narrow it)` : '');
+        meta.classList.remove('hidden');
+        if (!data.columns.length) return;
+
+        const head = document.createElement('tr');
+        for (const name of ['#', ...data.columns]) {
+          const th = document.createElement('th');
+          th.textContent = name;
+          head.appendChild(th);
+        }
+        $('sql-head').appendChild(head);
+        const frag = document.createDocumentFragment();
+        data.rows.forEach((row, i) => {
+          const tr = document.createElement('tr');
+          const n = document.createElement('td');
+          n.className = 'num';
+          n.textContent = i + 1;
+          tr.appendChild(n);
+          for (const v of row) {
+            const td = document.createElement('td');
+            if (v === null || v === undefined) { td.textContent = 'NULL'; td.className = 'null'; }
+            else { td.textContent = String(v); td.title = String(v); }
+            tr.appendChild(td);
+          }
+          frag.appendChild(tr);
+        });
+        $('sql-body').appendChild(frag);
+        $('sql-wrap').classList.remove('hidden');
+        $('sql-csv-btn').disabled = !data.rows.length;
+      } catch (err) {
+        if (reqId !== sqlRequestId) return;
+        setStatus(sqlStatus, 'warn', err.message || 'The query failed.', err.detail && err.detail !== err.message ? err.detail : '');
+        console.warn('[DB Explorer] SQL query failed:', err);
+      } finally {
+        sqlRunBtn.disabled = false;
+        sqlRunBtn.textContent = 'Run query';
+      }
+    }
+
+    $('sql-csv-btn').addEventListener('click', () => {
+      if (!sqlResult || !sqlResult.rows.length) return;
+      const esc = (v) => { const t = v === null || v === undefined ? '' : String(v); return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+      const lines = [sqlResult.columns.map(esc).join(','), ...sqlResult.rows.map((r) => r.map(esc).join(','))];
+      const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `query_${safeName(sqlDb || 'result')}_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+
+    $('sql-to-payroll-btn').addEventListener('click', () => {
+      if (!sqlText.value.trim()) return;
+      querySql.value = sqlText.value;
+      if (session && session.database) writePref(queryKey(session.database), querySql.value);
+      showSub('query');
+      location.hash = '#payroll';
+    });
+
+    /* ---- Saved queries (data/saved-queries.json on this PC) ---- */
+    let savedQueries = [];
+    let currentQuery = null; // { id, name, sql } as last loaded or saved
+    const sqName = $('sq-name');
+    const sqStatus = $('sq-status');
+    const currentKey = (db) => `sqlTabCurrent:${db}`;
+
+    const isDirty = () => {
+      if (!currentQuery) return Boolean(sqlText.value.trim());
+      return sqlText.value !== currentQuery.sql || sqName.value.trim() !== currentQuery.name;
+    };
+    function updateDirty() {
+      $('sq-dirty').textContent = !sqlText.value.trim() ? '' : !currentQuery ? 'Not saved' : isDirty() ? 'Unsaved changes' : '';
+      for (const tr of $('sq-body').children) tr.setAttribute('aria-selected', String(Boolean(currentQuery) && tr.dataset.id === currentQuery.id));
+    }
+    sqName.addEventListener('input', updateDirty);
+    sqName.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveQuery(false); } });
+
+    function setCurrent(q) {
+      currentQuery = q ? { id: q.id, name: q.name, sql: q.sql } : null;
+      if (sqlDb) writePref(currentKey(sqlDb), q ? q.id : '');
+      updateDirty();
+    }
+
+    /** After a reload: if the draft still matches a saved query, mark it as loaded. */
+    function restoreCurrentQuery() {
+      const id = sqlDb ? readPref(currentKey(sqlDb)) : '';
+      const q = id && savedQueries.find((x) => x.id === id);
+      currentQuery = q ? { id: q.id, name: q.name, sql: q.sql } : null;
+      sqName.value = q ? q.name : '';
+      updateDirty();
+    }
+
+    function renderSaved() {
+      const f = $('sq-filter').value.trim().toLowerCase();
+      const shown = savedQueries.filter((q) => !f || q.name.toLowerCase().includes(f) || q.sql.toLowerCase().includes(f));
+      const body = $('sq-body');
+      body.innerHTML = '';
+      for (const q of shown) {
+        const tr = document.createElement('tr');
+        tr.dataset.id = q.id;
+        tr.tabIndex = 0;
+        tr.title = q.sql.length > 400 ? q.sql.slice(0, 400) + '…' : q.sql;
+        tr.innerHTML = '<td class="sq-name"></td><td class="sq-db"></td><td class="sq-actions"><button type="button" class="icon-btn" data-act="run"></button><button type="button" class="icon-btn danger" data-act="del"></button></td>';
+        tr.children[0].textContent = q.name;
+        tr.children[1].textContent = q.database || '—';
+        const run = tr.querySelector('[data-act="run"]');
+        run.textContent = '▶';
+        run.title = `Load and run "${q.name}"`;
+        run.setAttribute('aria-label', run.title);
+        const del = tr.querySelector('[data-act="del"]');
+        del.textContent = 'Delete';
+        del.setAttribute('aria-label', `Delete "${q.name}"`);
+        run.addEventListener('click', (e) => { e.stopPropagation(); loadQuery(q, true); });
+        del.addEventListener('click', (e) => { e.stopPropagation(); deleteQuery(q); });
+        tr.addEventListener('click', () => loadQuery(q, false));
+        tr.addEventListener('keydown', (e) => { if (e.target === tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); loadQuery(q, false); } });
+        body.appendChild(tr);
+      }
+      $('sq-count').textContent = savedQueries.length ? String(savedQueries.length) : '';
+      $('sq-wrap').classList.toggle('hidden', !shown.length);
+      $('sq-empty').classList.toggle('hidden', shown.length > 0);
+      $('sq-empty').innerHTML = savedQueries.length ? 'No saved query matches the search.' : 'No saved queries yet. Write a query, give it a name and click <b>Save</b>.';
+      updateDirty();
+    }
+    $('sq-filter').addEventListener('input', renderSaved);
+
+    async function loadSavedQueries() {
+      try {
+        const res = await fetch('/api/saved-queries');
+        savedQueries = (await res.json()).queries || [];
+      } catch {
+        savedQueries = [];
+      }
+      renderSaved();
+      restoreCurrentQuery();
+    }
+
+    function loadQuery(q, andRun) {
+      const sameAsLoaded = currentQuery && currentQuery.id === q.id && !isDirty();
+      if (!sameAsLoaded && isDirty() && sqlText.value.trim() && !confirm('The editor has unsaved changes. Replace them with this saved query?')) return;
+      sqlText.value = q.sql;
+      sqName.value = q.name;
+      if (sqlDb) writePref(sqlKey(sqlDb), q.sql);
+      setCurrent(q);
+      sqStatus.className = 'hidden';
+      if (andRun) runSql();
+      else sqlText.focus();
+    }
+
+    async function saveQuery(asNew) {
+      const name = sqName.value.trim();
+      if (!name) { setStatus(sqStatus, 'warn', 'Type a name for the query first.'); sqName.focus(); return; }
+      if (!sqlText.value.trim()) { setStatus(sqStatus, 'warn', 'The query is empty.'); sqlText.focus(); return; }
+      if (asNew && currentQuery && name.toLowerCase() === currentQuery.name.toLowerCase()) {
+        setStatus(sqStatus, 'warn', 'Give the new copy a different name.');
+        sqName.focus();
+        sqName.select();
+        return;
+      }
+      try {
+        const data = await postJSON('/api/saved-queries/save', { id: asNew || !currentQuery ? undefined : currentQuery.id, name, sql: sqlText.value, database: sqlDb });
+        savedQueries = data.queries;
+        setCurrent(data.query);
+        renderSaved();
+        setStatus(sqStatus, 'ok', `Saved "${data.query.name}".`);
+      } catch (err) {
+        setStatus(sqStatus, 'warn', err.message || 'Could not save the query.');
+      }
+    }
+
+    async function deleteQuery(q) {
+      if (!confirm(`Delete the saved query "${q.name}"? This cannot be undone.`)) return;
+      try {
+        const data = await postJSON('/api/saved-queries/delete', { id: q.id });
+        savedQueries = data.queries;
+        // The editor keeps its text; it is just no longer linked to a saved query.
+        if (currentQuery && currentQuery.id === q.id) setCurrent(null);
+        renderSaved();
+        setStatus(sqStatus, 'ok', `Deleted "${q.name}". The editor still has its text if you need it.`);
+      } catch (err) {
+        setStatus(sqStatus, 'warn', err.message || 'Could not delete the query.');
+      }
+    }
+
+    $('sq-save-btn').addEventListener('click', () => saveQuery(false));
+    $('sq-saveas-btn').addEventListener('click', () => saveQuery(true));
+    $('sq-new-btn').addEventListener('click', () => {
+      if (isDirty() && sqlText.value.trim() && !confirm('The editor has unsaved changes. Start a new query anyway?')) return;
+      sqlText.value = '';
+      sqName.value = '';
+      if (sqlDb) writePref(sqlKey(sqlDb), '');
+      setCurrent(null);
+      resetSqlResult();
+      sqStatus.className = 'hidden';
+      sqName.focus();
+    });
+
+    loadSavedQueries();
+    showSub(readPref('payrollSub'));
+    showTab(location.hash.slice(1) || readPref('tab') || 'db');
 
     /* ------------------- Auto-connect with the saved connection ------------------- */
 
