@@ -4,7 +4,8 @@ const path = require('path');
 const express = require('express');
 const mysql = require('mysql2/promise');
 const sql = require('mssql');
-const { buildCashSlips, missingColumns, DEFAULT_CUTOFF, REQUIRED } = require('./cash-slip');
+const { buildCashSlips, DEFAULT_CUTOFF } = require('./cash-slip');
+const salarySource = require('./salary-source');
 const savedConnection = require('./saved-connection');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -21,7 +22,7 @@ const SYSTEM_DBS = {
 // The read endpoints use POST only so DB credentials travel in the request body,
 // not in the URL (where they would land in browser history and logs). Nothing
 // else may be posted, and no other write-style method is accepted at all.
-const READ_ENDPOINTS = new Set(['/api/connect', '/api/tables', '/api/columns', '/api/cash-slips']);
+const READ_ENDPOINTS = new Set(['/api/connect', '/api/tables', '/api/columns', '/api/salary-source', '/api/cash-slips', '/api/query-slips', '/api/distinct-values']);
 // These write ONLY to the local data/connection.json file (remember-me), never to the database.
 const LOCAL_SETTINGS_ENDPOINTS = new Set(['/api/saved-connection', '/api/saved-connection/last', '/api/saved-connection/forget']);
 const POST_ALLOWED = new Set([...READ_ENDPOINTS, ...LOCAL_SETTINGS_ENDPOINTS]);
@@ -101,7 +102,7 @@ function mssqlConfig(c) {
     password: c.password,
     database: c.database || undefined,
     connectionTimeout: CONNECT_TIMEOUT_MS,
-    requestTimeout: 15000,
+    requestTimeout: 30000,
     pool: { max: 1, min: 0, idleTimeoutMillis: 1000 },
     options: {
       encrypt: c.encrypt,
@@ -114,22 +115,78 @@ function mssqlConfig(c) {
 
 /*
  * READ-ONLY GUARANTEE. This app must never change data on the server. Three layers:
- *   1. Every statement must be a single SELECT/SHOW (assertReadOnly), checked before it is sent.
+ *   1. Every statement must be a single SELECT (or WITH ... SELECT / SHOW), checked by
+ *      assertReadOnly before it is sent. This also covers queries typed in the Query box.
  *   2. MySQL sessions are switched to READ ONLY, so the server itself rejects any write.
  *   3. SQL Server work runs inside a transaction that is always rolled back, never committed.
  * Route handlers only ever see the guarded wrappers below, never the raw connection.
  */
 class ReadOnlyError extends Error {}
 
+/**
+ * Splits SQL into
+ *   clean: the text with -- and /* *\/ comments removed (strings and [names] kept), and
+ *   code:  the same with every string literal emptied, so keywords inside strings
+ *          ('...delete...') or a ';' in a value never trip the checks.
+ */
+function scanSql(text) {
+  const src = String(text || '');
+  let clean = '';
+  let code = '';
+  for (let i = 0; i < src.length;) {
+    const ch = src[i];
+    const two = src.slice(i, i + 2);
+    if (two === '--') {
+      const nl = src.indexOf('\n', i);
+      i = nl < 0 ? src.length : nl;
+      clean += ' ';
+      code += ' ';
+    } else if (two === '/*') {
+      const end = src.indexOf('*/', i + 2);
+      i = end < 0 ? src.length : end + 2;
+      clean += ' ';
+      code += ' ';
+    } else if (ch === "'" || ch === '"' || ch === '[' || ch === '`') {
+      const close = ch === '[' ? ']' : ch;
+      let j = i + 1;
+      for (; j < src.length; j++) {
+        if (src[j] === close) {
+          if (src[j + 1] === close) { j++; continue; } // doubled quote = escaped
+          break;
+        }
+      }
+      const literal = src.slice(i, j + 1);
+      clean += literal;
+      // String values are blanked for the checks; quoted identifiers keep a neutral placeholder.
+      code += ch === "'" ? "''" : ' x ';
+      i = j + 1;
+    } else {
+      clean += ch;
+      code += ch;
+      i++;
+    }
+  }
+  return { clean: clean.trim(), code };
+}
+
+// Any of these anywhere in the statement (outside strings and comments) is refused.
+const WRITE_WORDS = /\b(INSERT|UPDATE|DELETE|MERGE|UPSERT|REPLACE\s+INTO|DROP|ALTER|CREATE|TRUNCATE|RENAME|GRANT|REVOKE|DENY|EXEC|EXECUTE|CALL|DECLARE|SET|USE|BACKUP|RESTORE|DBCC|KILL|SHUTDOWN|BULK|OPENROWSET|OPENQUERY|OPENDATASOURCE|LOAD\s+DATA|HANDLER|LOCK|UNLOCK)\b/i;
+
+/** Throws ReadOnlyError unless text is one read-only statement. Returns the comment-free SQL to send. */
 function assertReadOnly(text) {
-  const s = String(text || '');
+  const { clean, code } = scanSql(text);
+  const body = code.trim();
+  const word = (body.match(WRITE_WORDS) || [])[1];
   const problem =
-    !/^\s*(SELECT|SHOW)\b/i.test(s) ? 'only SELECT / SHOW statements are allowed' :
-    /;\s*\S/.test(s) ? 'multiple statements are not allowed' :
-    /\bINTO\b/i.test(s) ? 'SELECT ... INTO writes data and is not allowed' :
-    /\bFOR\s+UPDATE\b/i.test(s) ? 'locking reads (FOR UPDATE) are not allowed' :
+    !body ? 'the query is empty' :
+    !/^(SELECT|SHOW|WITH)\b/i.test(body) ? 'only SELECT queries are allowed' :
+    /;\s*\S/.test(body) ? 'multiple statements are not allowed' :
+    /\bINTO\b/i.test(body) ? 'SELECT ... INTO writes data and is not allowed' :
+    /\bFOR\s+UPDATE\b/i.test(body) ? 'locking reads (FOR UPDATE) are not allowed' :
+    word ? `"${word.toUpperCase()}" is not allowed in a read-only query` :
     null;
   if (problem) throw new ReadOnlyError(`Blocked by read-only mode: ${problem}.`);
+  return clean.replace(/;\s*$/, '');
 }
 
 /** Run `fn` with a read-only MySQL connection, always closing it afterwards. */
@@ -141,6 +198,13 @@ async function withMysql(c, fn, extra = {}) {
       query(q, params) {
         assertReadOnly(typeof q === 'string' ? q : q && q.sql);
         return conn.query(q, params);
+      },
+      /** Runs a user-typed SELECT, returning at most `limit` rows. */
+      async queryLimited(text, limit) {
+        const safe = assertReadOnly(text);
+        await conn.query(`SET SESSION sql_select_limit = ${Number(limit) | 0}`);
+        const [rows, fields] = await conn.query({ sql: safe, timeout: 30000 });
+        return { rows, columns: (fields || []).map((f) => f.name) };
       },
     };
     return await fn(guarded);
@@ -165,6 +229,13 @@ async function withMssql(c, fn) {
         r.query = (text) => { assertReadOnly(text); return run(text); };
         r.batch = r.execute = () => { throw new ReadOnlyError('Blocked by read-only mode: batches and stored procedures are not allowed.'); };
         return r;
+      },
+      /** Runs a user-typed SELECT, returning at most `limit` rows (SET ROWCOUNT caps it server side). */
+      async queryLimited(text, limit) {
+        const safe = assertReadOnly(text);
+        const r = new sql.Request(tx);
+        const res = await r.query(`SET ROWCOUNT ${Number(limit) | 0};\n${safe}`);
+        return { rows: res.recordset || [], columns: Object.keys((res.recordset && res.recordset.columns) || {}) };
       },
     };
     return await fn(guarded);
@@ -360,6 +431,7 @@ app.post('/api/columns', async (req, res) => {
     if (!table) throw new ValidationError('Table name is required.');
     // MySQL has no schemas inside a database; SQL Server defaults to dbo.
     const schema = c.engine === 'mysql' ? c.database : String(body.schema || 'dbo').trim();
+    const noCount = Boolean(body.noCount); // skip COUNT(*) when only the column names are needed
 
     let columns;
     let rowCount = null;
@@ -379,7 +451,7 @@ app.post('/api/columns', async (req, res) => {
 
         let count = null;
         let countErr = null;
-        try {
+        if (!noCount) try {
           // Identifiers can't be bound as parameters; escapeId quotes them safely.
           const [[r]] = await conn.query({
             sql: `SELECT COUNT(*) AS n FROM ${mysql.escapeId(c.database)}.${mysql.escapeId(table)}`,
@@ -430,7 +502,7 @@ app.post('/api/columns', async (req, res) => {
 
         let count = null;
         let countErr = null;
-        try {
+        if (!noCount) try {
           // Bracket-quote identifiers (] is escaped as ]]) since they can't be parameters.
           const q = (s) => `[${s.replace(/]/g, ']]')}]`;
           const cr = await pool.request().query(`SELECT COUNT_BIG(*) AS n FROM ${q(schema)}.${q(table)}`);
@@ -469,47 +541,209 @@ app.post('/api/columns', async (req, res) => {
   }
 });
 
-// Endpoint 4: bank / cash split for every employee who qualifies for a cash slip.
+/**
+ * Runs fn({ q, param, run }) on a guarded read-only connection.
+ *   q(name)          quotes an identifier for the engine
+ *   param            placeholder for the single bound value ('?' or '@proc')
+ *   run(sql, value)  runs one SELECT and resolves to its rows
+ */
+async function withReader(c, fn) {
+  if (c.engine === 'mysql') {
+    // dateStrings keeps DOJ/DOS as plain YYYY-MM-DD, avoiding timezone shifts.
+    return withMysql(c, (conn) => fn({
+      q: (name) => mysql.escapeId(String(name)),
+      param: '?',
+      run: async (text, value) => (await conn.query({ sql: text, timeout: 30000 }, value === undefined ? [] : [value]))[0],
+      queryLimited: (text, limit) => conn.queryLimited(text, limit),
+    }), { dateStrings: true });
+  }
+  return withMssql(c, (pool) => fn({
+    q: (name) => `[${String(name).replace(/]/g, ']]')}]`,
+    param: '@proc',
+    run: async (text, value) => {
+      const r = pool.request();
+      if (value !== undefined) r.input('proc', sql.VarChar(100), String(value));
+      return (await r.query(text)).recordset;
+    },
+    queryLimited: (text, limit) => pool.queryLimited(text, limit),
+  }));
+}
+
+/** Finds MonthWiseSalaryInfo / MonthWiseSalaryInfoExt and resolves the columns the slip needs. */
+async function loadSalarySource(reader, c) {
+  const { q, run } = reader;
+  const names = `'${salarySource.INFO}', '${salarySource.EXT}'`;
+  const text = `SELECT TABLE_SCHEMA AS ${q('schema')}, TABLE_NAME AS ${q('table')}, COLUMN_NAME AS ${q('column')}
+  FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_NAME IN (${names})${c.engine === 'mysql' ? ' AND TABLE_SCHEMA = ?' : ''}
+ ORDER BY ORDINAL_POSITION`;
+  const rows = await run(text, c.engine === 'mysql' ? c.database : undefined);
+  const tables = salarySource.pickTables(rows);
+  return { tables, resolved: salarySource.resolveColumns(tables) };
+}
+
+function describeMissing(resolved) {
+  if (resolved.tablesMissing && resolved.tablesMissing.length) {
+    return `Table(s) not found in this database: ${resolved.tablesMissing.join(', ')}.`;
+  }
+  const parts = [];
+  if (resolved.missing.info.length) parts.push(`${salarySource.INFO} is missing ${resolved.missing.info.join(', ')}`);
+  if (resolved.missing.ext.length) parts.push(`${salarySource.EXT} is missing ${resolved.missing.ext.join(', ')}`);
+  return parts.join('; ') + '.';
+}
+
+// Endpoint 4: is the month-wise salary source here, and which salary months (SalaryProcID) exist?
+app.post('/api/salary-source', async (req, res) => {
+  let c;
+  try {
+    c = parseCredentials(await savedConnection.resolve(req.body || {}), { requireDatabase: true });
+    const out = await withReader(c, async (reader) => {
+      const { tables, resolved } = await loadSalarySource(reader, c);
+      const found = Boolean(tables.info && tables.ext);
+      let procs = [];
+      if (resolved.ready) {
+        const rows = await reader.run(salarySource.buildProcListQuery(tables, resolved.map, reader.q));
+        procs = rows.map((r) => ({ id: String(r.id), rows: Number(r.n) }));
+      }
+      return {
+        found,
+        ready: resolved.ready,
+        message: resolved.ready ? null : describeMissing(resolved),
+        warnings: resolved.warnings,
+        tables: found ? { info: `${tables.info.schema}.${tables.info.name}`, ext: `${tables.ext.schema}.${tables.ext.name}` } : null,
+        procs,
+      };
+    });
+    res.json({ ok: true, database: c.database, ...out });
+  } catch (err) {
+    sendError(res, err, c);
+  }
+});
+
+// Endpoint 5: bank / cash split for one salary month, from MonthWiseSalaryInfo + Ext.
 app.post('/api/cash-slips', async (req, res) => {
   let c;
   try {
     const body = await savedConnection.resolve(req.body || {});
     c = parseCredentials(body, { requireDatabase: true });
-    const table = String(body.table || '').trim();
-    if (!table) throw new ValidationError('Table name is required.');
-    const schema = c.engine === 'mysql' ? c.database : String(body.schema || 'dbo').trim();
+    const salaryProcId = String(body.salaryProcId || '').trim();
+    if (!salaryProcId) throw new ValidationError('Pick a salary month (SalaryProcID).');
     const cutoff = String(body.cutoff || DEFAULT_CUTOFF).trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) throw new ValidationError('Cut-off date must be YYYY-MM-DD.');
+    if (!/^d{4}-d{2}-d{2}$/.test(cutoff)) throw new ValidationError('Cut-off date must be YYYY-MM-DD.');
 
-    let rows;
-    let columnNames;
-    if (c.engine === 'mysql') {
-      // dateStrings keeps DOJ/DOS as plain YYYY-MM-DD, avoiding timezone shifts.
-      ({ rows, columnNames } = await withMysql(c, async (conn) => {
-        const [r, fields] = await conn.query({
-          sql: `SELECT * FROM ${mysql.escapeId(c.database)}.${mysql.escapeId(table)}`,
-          timeout: 30000,
-        });
-        return { rows: r, columnNames: fields.map((f) => f.name) };
-      }, { dateStrings: true }));
-    } else {
-      ({ rows, columnNames } = await withMssql(c, async (pool) => {
-        const q = (s) => `[${s.replace(/]/g, ']]')}]`;
-        const r = await pool.request().query(`SELECT * FROM ${q(schema)}.${q(table)}`);
-        return { rows: r.recordset, columnNames: Object.keys(r.recordset.columns || {}) };
-      }));
-    }
-
-    const missing = missingColumns(columnNames);
-    if (missing.length) {
-      throw new ValidationError(`Table "${table}" is missing column(s) ${missing.join(', ')}. Cash slips need ${REQUIRED.join(', ')}.`);
+    const { rows, warnings, tables } = await withReader(c, async (reader) => {
+      const { tables: t, resolved } = await loadSalarySource(reader, c);
+      if (!resolved.ready) throw new ValidationError(describeMissing(resolved));
+      const text = salarySource.buildSlipQuery(t, resolved.map, reader.q, reader.param);
+      return { rows: await reader.run(text, salaryProcId), warnings: resolved.warnings, tables: t };
+    });
+    if (!rows.length) {
+      throw new ValidationError(`No rows for SalaryProcID "${salaryProcId}" in ${salarySource.INFO} joined with ${salarySource.EXT}.`);
     }
 
     const result = buildCashSlips(rows, { cutoff });
     const s = result.summary;
-    console.log(`\n[cash-slips] ${c.database} / ${table} — ${s.totalRows} row(s), ${s.qualified} qualified, ${s.withCash} with cash (cut-off ${cutoff})`);
+    console.log(`
+[cash-slips] ${c.database} SalaryProcID ${salaryProcId} — ${s.totalRows} row(s), ${s.qualified} qualified, ${s.withCash} with cash (cut-off ${cutoff})`);
 
-    res.json({ ok: true, database: c.database, table, ...result });
+    res.json({
+      ok: true,
+      database: c.database,
+      source: `${tables.info.name} + ${tables.ext.name}`,
+      salaryProcId,
+      warnings,
+      ...result,
+    });
+  } catch (err) {
+    if (err && /cash_ratios.json/.test(err.message || '')) {
+      return res.status(500).json({ ok: false, error: { type: 'RATIO_FILE', severity: 'warning', message: err.message } });
+    }
+    sendError(res, err, c);
+  }
+});
+
+// Endpoint 7: distinct values of one column with row counts, newest first (salary month list
+// for the Manual mapping panel). The table and column are checked against INFORMATION_SCHEMA first.
+app.post('/api/distinct-values', async (req, res) => {
+  let c;
+  try {
+    const body = await savedConnection.resolve(req.body || {});
+    c = parseCredentials(body, { requireDatabase: true });
+    const table = String(body.table || '').trim();
+    const column = String(body.column || '').trim();
+    if (!table || !column) throw new ValidationError('Table and column are required.');
+    const schema = c.engine === 'mysql' ? c.database : String(body.schema || 'dbo').trim();
+
+    const values = await withReader(c, async ({ q, run }) => {
+      const lit = (v) => `'${String(v).replace(/'/g, "''")}'`;
+      const cols = await run(`SELECT COLUMN_NAME AS ${q('name')} FROM INFORMATION_SCHEMA.COLUMNS
+ WHERE TABLE_SCHEMA = ${lit(schema)} AND TABLE_NAME = ${lit(table)}`);
+      const real = cols.map((r) => r.name).find((n) => n.toLowerCase() === column.toLowerCase());
+      if (!real) throw new ValidationError(`Column "${column}" was not found in ${schema}.${table}.`);
+      const from = c.engine === 'mysql' ? q(table) : `${q(schema)}.${q(table)}`;
+      const col = q(real);
+      const rows = await run(c.engine === 'mysql'
+        ? `SELECT ${col} AS ${q('id')}, COUNT(*) AS ${q('n')} FROM ${from} GROUP BY ${col} ORDER BY ${col} DESC LIMIT 500`
+        : `SELECT TOP 500 ${col} AS ${q('id')}, COUNT(*) AS ${q('n')} FROM ${from} GROUP BY ${col} ORDER BY ${col} DESC`);
+      return rows.filter((r) => r.id != null).map((r) => ({ id: String(r.id), rows: Number(r.n) }));
+    });
+    res.json({ ok: true, values });
+  } catch (err) {
+    sendError(res, err, c);
+  }
+});
+
+// Endpoint 6: cash split for the rows a user-typed SELECT returns (Query box).
+const QUERY_ROW_LIMIT = 5000;
+const QUERY_REQUIRED = ['EmployeeCode', 'EmployeeName', 'Designation', 'OrgGross', 'OrgBasic', 'OrgHouseRent', 'OrgMedical', 'OrgConvence', 'DOJ'];
+const QUERY_OPTIONAL = ['DOS', 'DisplayEmployeeCode', 'Department', 'Unit', 'SalaryProcID'];
+
+app.post('/api/query-slips', async (req, res) => {
+  let c;
+  try {
+    const body = await savedConnection.resolve(req.body || {});
+    c = parseCredentials(body, { requireDatabase: true });
+    const text = String(body.sql || '');
+    if (!text.trim()) throw new ValidationError('Write or paste a SELECT query first.');
+    if (text.length > 20000) throw new ValidationError('The query is too long (max 20,000 characters).');
+    assertReadOnly(text); // refuse writes before even connecting (checked again when it runs)
+    const cutoff = String(body.cutoff || DEFAULT_CUTOFF).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cutoff)) throw new ValidationError('Cut-off date must be YYYY-MM-DD.');
+
+    // One extra row tells us the limit was hit.
+    const { rows, columns } = await withReader(c, (reader) => reader.queryLimited(text, QUERY_ROW_LIMIT + 1));
+    if (rows.length > QUERY_ROW_LIMIT) {
+      throw new ValidationError(`The query returned more than ${QUERY_ROW_LIMIT.toLocaleString()} rows. Narrow it with WHERE (for example one SalaryProcID).`);
+    }
+
+    const have = new Map((columns.length ? columns : Object.keys(rows[0] || {})).map((n) => [n.toLowerCase(), n]));
+    const missing = QUERY_REQUIRED.filter((n) => !have.has(n.toLowerCase()));
+    if (missing.length) {
+      throw new ValidationError(`The query ran, but its result is missing column(s): ${missing.join(', ')}. Rename with AS, e.g. "e.DesigName AS Designation".`);
+    }
+    const warnings = [];
+    if (!have.has('dos')) warnings.push('No DOS column in the result: inactive (separated) employees cannot be excluded.');
+
+    // Copy only the known columns, so a stray column such as BASIC can never shadow OrgBasic.
+    const pick = (row, name) => row[have.get(name.toLowerCase())];
+    const mapped = rows.map((row) => {
+      const out = {
+        Gross: pick(row, 'OrgGross'),
+        Basic: pick(row, 'OrgBasic'),
+        HouseRent: pick(row, 'OrgHouseRent'),
+        Medical: pick(row, 'OrgMedical'),
+        Conveyance: pick(row, 'OrgConvence'),
+      };
+      for (const n of ['EmployeeCode', 'EmployeeName', 'Designation', 'DOJ', ...QUERY_OPTIONAL]) {
+        if (have.has(n.toLowerCase())) out[n] = pick(row, n);
+      }
+      return out;
+    });
+
+    const result = buildCashSlips(mapped, { cutoff });
+    const s = result.summary;
+    console.log(`\n[query-slips] ${c.database} — ${s.totalRows} row(s), ${s.qualified} qualified, ${s.withCash} with cash (cut-off ${cutoff})`);
+    res.json({ ok: true, database: c.database, warnings, columns, ...result });
   } catch (err) {
     if (err && /cash_ratios\.json/.test(err.message || '')) {
       return res.status(500).json({ ok: false, error: { type: 'RATIO_FILE', severity: 'warning', message: err.message } });

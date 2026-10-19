@@ -3,15 +3,17 @@
 /*
  * Cash / bank salary split for cash slips.
  *
- * Gross in the payroll table is the ACTUAL gross (bank + cash). Each employee's
- * CashRatio = ActualGross / bankGross, so:
+ * "Gross" is OrgGross from MonthWiseSalaryInfo (see salary-source.js), the gross the
+ * salary is split from. Each employee's CashRatio gives:
  *   bank = Gross / ratio,  cash = Gross - bank.
+ * Both parts are split over Basic / HouseRent / Medical / Conveyance in the same
+ * proportion as OrgBasic / OrgHouseRent / OrgMedical / OrgConvence to OrgGross.
  * Ratio lookup: employee's own ratio -> designation average -> 1.0 (no cash).
  *
- * Eligibility (relative to the cut-off date, 1 Sep 2026 by default):
- *   joined before cut-off  -> Gross >= 60,000
- *   joined on/after cut-off -> Gross >= 100,000
- *   separated (DOS) before the cut-off -> excluded
+ * Eligibility, checked in this order:
+ *   1. DOS present (any date)  -> not active, excluded
+ *   2. joined before cut-off   -> Gross >= 60,000
+ *      joined on/after cut-off -> Gross >= 100,000   (cut-off: 1 Sep 2026 by default)
  */
 
 const fs = require('fs');
@@ -23,11 +25,6 @@ const THRESHOLD_BEFORE = 60000;
 const THRESHOLD_AFTER = 100000;
 
 const COMPONENTS = ['Basic', 'HouseRent', 'Medical', 'Conveyance'];
-const DEDUCTIONS = [
-  'LunchDeduction', 'ExtraMobileBill', 'IncomeTax', 'PF', 'Stamp',
-  'FairShop', 'Advance', 'VehicleDeduction', 'OtherDeduction',
-];
-const REQUIRED = ['EmployeeCode', 'Designation', 'Gross', 'DOJ'];
 
 const normCode = (v) => String(v == null ? '' : v).trim().replace(/^0+(?=\d)/, '');
 const normDesig = (v) => String(v == null ? '' : v).toLowerCase().replace(/\./g, ' ').replace(/\s+/g, ' ').trim();
@@ -92,7 +89,7 @@ const num = (v) => {
 function splitByComponents(total, gross, parts) {
   const out = {};
   let used = 0;
-  for (const k of ['HouseRent', 'Medical', 'Conveyance', 'Others']) {
+  for (const k of ['HouseRent', 'Medical', 'Conveyance']) {
     out[k] = Math.round(total * (parts[k] / gross));
     used += out[k];
   }
@@ -108,11 +105,6 @@ function rowReader(row) {
   return (name) => lower[name.toLowerCase()];
 }
 
-function missingColumns(columnNames) {
-  const have = new Set(columnNames.map((c) => c.toLowerCase()));
-  return REQUIRED.filter((c) => !have.has(c.toLowerCase()));
-}
-
 /**
  * Builds slip data for every row. Returns { slips, skipped, summary }.
  * `slips` holds everyone who passes the threshold (cash may still be 0 when ratio is 1.0).
@@ -120,8 +112,10 @@ function missingColumns(columnNames) {
 function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
   const ratios = loadRatios();
   const slips = [];
-  const skipped = { noGross: 0, belowThreshold: 0, separated: 0, badDOJ: 0 };
+  const skipped = { noGross: 0, belowThreshold: 0, separated: 0, badDOJ: 0, duplicate: 0 };
   const badRows = [];
+  const duplicates = [];
+  const seen = new Set();
 
   for (const row of rows) {
     const get = rowReader(row);
@@ -129,13 +123,19 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
     const code = get('EmployeeCode');
     const ident = { code: String(code == null ? '' : code), name: get('EmployeeName') || '' };
 
+    // One slip per employee per month; a second row for the same code is reported, not paid twice.
+    if (seen.has(normCode(code))) { skipped.duplicate++; duplicates.push(ident.code); continue; }
+    seen.add(normCode(code));
+
+    // 1. Active check first: anyone with a DOS (any date) has left and is out.
+    const dos = toYMD(get('DOS'));
+    if (dos !== null) { skipped.separated++; continue; }
+
+    // 2. Then the salary threshold, which depends on DOJ.
     if (gross <= 0) { skipped.noGross++; continue; }
 
     const doj = toYMD(get('DOJ'));
     if (!doj) { skipped.badDOJ++; badRows.push({ ...ident, DOJ: String(get('DOJ')) }); continue; }
-
-    const dos = toYMD(get('DOS'));
-    if (dos && dos < cutoff) { skipped.separated++; continue; }
 
     const joinedBefore = doj < cutoff;
     const threshold = joinedBefore ? THRESHOLD_BEFORE : THRESHOLD_AFTER;
@@ -146,21 +146,12 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
 
     const parts = {};
     for (const k of COMPONENTS) parts[k] = num(get(k));
-    // Whatever gross holds beyond the four main heads (lunch, food, other allowances).
-    parts.Others = Math.max(0, gross - COMPONENTS.reduce((s, k) => s + parts[k], 0));
+    // Basic takes whatever the Org heads do not add up to, so the slip shows only four heads.
+    const partsSum = COMPONENTS.reduce((s, k) => s + parts[k], 0);
 
     const bankExact = gross / ratio;
     const bankTotal = Math.round(bankExact);
     const cashTotal = gross - bankTotal;
-
-    // Every non-zero deduction column, so the trace shows where the total came from.
-    const deductionItems = {};
-    for (const k of DEDUCTIONS) if (num(get(k))) deductionItems[k] = num(get(k));
-    const listed = get('TotalDeductionsListed');
-    const useListed = listed != null && listed !== '' && Number.isFinite(Number(listed));
-    const deductions = useListed
-      ? Math.round(Number(listed))
-      : Math.round(Object.values(deductionItems).reduce((s, v) => s + v, 0));
 
     slips.push({
       ...ident,
@@ -175,12 +166,10 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
       ratioSource: source,
       bank: splitByComponents(bankTotal, gross, parts),
       cash: splitByComponents(cashTotal, gross, parts),
-      deductions,
-      netBank: bankTotal - deductions,
       // Inputs and intermediate values behind the numbers above, for on-screen tracing only.
       trace: {
         cutoff,
-        rawDOJ: String(get('DOJ') ?? ''),
+        rawDOJ: get('DOJ') instanceof Date ? get('DOJ').toISOString().slice(0, 10) : String(get('DOJ') ?? ''),
         dos: dos || null,
         joinedBefore,
         lookup: {
@@ -192,9 +181,9 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
         },
         ratioExact: ratio,
         bankExact,
+        salaryProcId: get('SalaryProcID') == null ? null : String(get('SalaryProcID')),
         parts,
-        deductionSource: useListed ? 'TotalDeductionsListed' : 'sum',
-        deductionItems,
+        partsSum,
       },
     });
   }
@@ -205,6 +194,7 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
     slips,
     skipped,
     badRows: badRows.slice(0, 20),
+    duplicates: duplicates.slice(0, 20),
     summary: {
       cutoff,
       totalRows: rows.length,
@@ -218,4 +208,4 @@ function buildCashSlips(rows, { cutoff = DEFAULT_CUTOFF } = {}) {
   };
 }
 
-module.exports = { buildCashSlips, missingColumns, loadRatios, DEFAULT_CUTOFF, REQUIRED };
+module.exports = { buildCashSlips, loadRatios, DEFAULT_CUTOFF };

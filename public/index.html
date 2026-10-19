@@ -175,6 +175,36 @@
     .badge.default { background: var(--danger-soft); color: var(--danger); }
     @media (prefers-color-scheme: dark) { .badge.designation { background: #3a3016; color: #f2c661; } }
 
+    .wide-panels { max-width: 1100px; margin: 0 auto; padding: 0 16px 32px; display: grid; gap: 16px; }
+    .wide-panels > .panel, .stack > .panel, .results > * { min-width: 0; }
+    .map-grid { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 12px; align-items: center; margin-bottom: 14px; }
+    @media (max-width: 560px) { .map-grid { grid-template-columns: minmax(0, 1fr); } .map-grid label { margin-top: 6px; } }
+    .map-grid label { margin: 0; }
+    .map-join { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .map-join select { width: auto; min-width: 140px; flex: 1 1 140px; }
+    .map-join .op { color: var(--muted); font-family: var(--mono); }
+    .map-section { margin: 16px 0 6px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .map-extra { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; border: 1px dashed var(--border); border-radius: 8px; margin-bottom: 8px; }
+    .map-extra select { width: auto; min-width: 130px; flex: 1 1 130px; }
+    .map-extra select[id^="map-x-table-"] { flex: 2 1 240px; }
+    .map-extra .alias { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+    .map-extra button, .map-add { width: auto; margin: 0; padding: 6px 12px; font-size: 13px; }
+    .map-fields td { padding: 5px 8px; vertical-align: middle; }
+    .map-fields td:first-child { min-width: 170px; }
+    .map-fields select { padding: 6px 8px; min-width: 170px; }
+    .map-fields td:last-child { white-space: nowrap; }
+    .map-fields tr.missing td { background: #fff4d6; }
+    .map-fields tr.missing td:first-child { box-shadow: inset 4px 0 0 #e0a100; }
+    @media (prefers-color-scheme: dark) { .map-fields tr.missing td { background: #3a3016; } }
+    .map-flag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #fff4d6; color: #8a5a00; }
+    @media (prefers-color-scheme: dark) { .map-flag { background: #3a3016; color: #f2c661; } }
+    .map-ok { color: var(--ok); font-weight: 600; font-size: 12px; }
+    .map-sql { font: 12px/1.5 var(--mono); white-space: pre-wrap; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 10px 0 0; }
+    .sql-box { width: 100%; min-height: 220px; margin-bottom: 12px; padding: 10px 12px; font: 13px/1.5 var(--mono); color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; resize: vertical; tab-size: 4; }
+    .sql-box:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    input.row-check { width: auto; margin: 0; cursor: pointer; }
+    input.row-check:disabled { cursor: not-allowed; }
+    tr.no-cash td { color: var(--muted); }
     .trace { margin-top: 16px; border: 1px solid var(--accent); border-radius: 8px; padding: 14px 16px; background: var(--bg); }
     .trace h3 { margin: 0 0 4px; font-size: 16px; }
     .trace .who { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
@@ -194,7 +224,7 @@
   <header>
     <h1>DB Explorer</h1>
     <p>Connect to a MySQL or SQL Server instance and browse its databases and tables.</p>
-    <span class="readonly-note" title="Only SELECT / SHOW queries are sent. Nothing on the server can be changed.">🔒 Read-only: data shudhu pora hoy, kichu lekha hoy na</span>
+    <span class="readonly-note" title="Only SELECT / SHOW queries are sent. Nothing on the server can be changed.">🔒 Read-only: data is only read, never changed</span>
   </header>
 
   <main>
@@ -277,37 +307,68 @@
           </div>
           <p id="detail-empty" class="empty">Click a table to see its columns.</p>
         </div>
-
-        <div class="panel hidden" id="cash-panel">
-          <h2 id="cash-title">Cash slips</h2>
-          <form id="cash-form" class="cash-controls" novalidate>
-            <div>
-              <label for="cutoff">Cut-off date</label>
-              <input id="cutoff" type="date" value="2026-09-01" required />
-            </div>
-            <button type="submit" id="cash-btn">Calculate cash part</button>
-          </form>
-          <p class="field-note">Joined before cut-off: Gross ≥ 60,000. Joined on/after: Gross ≥ 100,000. Ratio: employee → designation → 1.0.</p>
-          <div id="cash-status" class="status hidden" role="status"></div>
-          <div id="cash-stats" class="stats hidden" style="margin-top:14px"></div>
-          <div id="cash-actions" class="cash-actions hidden">
-            <label class="check"><input type="checkbox" id="cash-only" checked /> Only employees with cash &gt; 0</label>
-            <span class="spacer"></span>
-            <button type="button" id="csv-btn" class="secondary">Download CSV</button>
-            <button type="button" id="print-btn">Print slips</button>
-          </div>
-          <div id="cash-wrap" class="table-wrap hidden">
-            <table>
-              <thead><tr><th>#</th><th>Code</th><th>Name</th><th>Designation</th><th>DOJ</th><th class="r">Gross</th><th class="r">Ratio</th><th>Source</th><th class="r">Bank</th><th class="r">Cash</th><th class="r">Net bank</th></tr></thead>
-              <tbody id="cash-body" class="clickable"></tbody>
-            </table>
-          </div>
-          <p id="trace-hint" class="field-note hidden">Click a row to see its full calculation. The trace is only shown here, never on the printed slip.</p>
-          <div id="trace" class="trace hidden" aria-live="polite"></div>
-        </div>
       </div>
     </section>
   </main>
+
+  <!-- Cash slip panels: full width below the browser, so tables and mappings have room. -->
+  <section class="wide-panels">
+    <div class="panel hidden" id="cash-panel">
+      <h2 id="cash-title">Cash slips</h2>
+      <p id="cash-source" class="meta"></p>
+      <form id="cash-form" class="cash-controls" novalidate>
+        <div>
+          <label for="salary-proc">Salary month <span class="hint">(SalaryProcID)</span></label>
+          <select id="salary-proc" required></select>
+        </div>
+        <div>
+          <label for="cutoff">Cut-off date</label>
+          <input id="cutoff" type="date" value="2026-09-01" required />
+        </div>
+        <button type="submit" id="cash-btn">Calculate cash part</button>
+      </form>
+      <p class="field-note">Joined before cut-off: OrgGross ≥ 60,000. Joined on/after: OrgGross ≥ 100,000. Ratio: employee → designation → 1.0. Bank = OrgGross ÷ ratio, cash = OrgGross − bank.</p>
+      <div id="cash-status" class="status hidden" role="status"></div>
+      <div id="cash-stats" class="stats hidden" style="margin-top:14px"></div>
+      <div id="cash-actions" class="cash-actions hidden">
+        <label class="check"><input type="checkbox" id="cash-only" checked /> Only employees with cash &gt; 0</label>
+        <span class="spacer"></span>
+        <button type="button" id="csv-btn" class="secondary">Download CSV</button>
+        <button type="button" id="print-btn">Print slips</button>
+      </div>
+      <div id="cash-wrap" class="table-wrap hidden">
+        <table>
+          <thead><tr><th>#</th><th>Code</th><th>Name</th><th>Designation</th><th>DOJ</th><th class="r">OrgGross</th><th class="r">Ratio</th><th>Source</th><th class="r">Bank</th><th class="r">Cash</th></tr></thead>
+          <tbody id="cash-body" class="clickable"></tbody>
+        </table>
+      </div>
+      <p id="trace-hint" class="field-note hidden">Click a row to see its full calculation. The trace is only shown here, never on the printed slip.</p>
+      <div id="trace" class="trace hidden" aria-live="polite"></div>
+    </div>
+
+    <div class="panel hidden" id="map-panel">
+      <h2>Cash slips by manual mapping</h2>
+      <p class="field-note" style="margin:0 0 12px">Pick the salary table and the employee table, then tell the app which column holds each field. Columns with matching names are picked automatically; fields still marked <span class="map-flag">needs a column</span> must be chosen by hand. If a field (for example Designation) lives in another table, use <b>+ Add table</b> to join it.</p>
+      <div id="map-body"></div>
+      <div id="map-results"></div>
+    </div>
+
+    <div class="panel hidden" id="query-panel">
+      <h2>Cash slips from a custom query</h2>
+      <p class="field-note" style="margin:0 0 10px">Replace the table / column names in the template with yours, or paste your own SELECT query. Only SELECT is allowed (read-only). The result must contain these column names (rename with <code>AS</code> if needed): <code>EmployeeCode, EmployeeName, Designation, OrgGross, OrgBasic, OrgHouseRent, OrgMedical, OrgConvence, DOJ, DOS</code>.</p>
+      <textarea id="query-sql" class="sql-box" rows="16" spellcheck="false" aria-label="SQL query"></textarea>
+      <div class="cash-controls">
+        <div>
+          <label for="query-cutoff">Cut-off date</label>
+          <input id="query-cutoff" type="date" value="2026-09-01" />
+        </div>
+        <button type="button" id="query-template-btn" class="secondary">Reset to template</button>
+        <button type="button" id="query-run-btn">Run query</button>
+      </div>
+      <p class="field-note">Ctrl+Enter = Run. Order: anyone with a DOS is excluded → OrgGross ≥ 60,000 / 100,000 depending on DOJ → bank/cash split by ratio. Only eligible employees appear in the table. Max 5,000 rows.</p>
+      <div id="query-results"></div>
+    </div>
+  </section>
 
   <script>
     const DEFAULT_PORTS = { mysql: 3306, mssql: 1433 };
@@ -483,12 +544,14 @@
       detailEmpty.textContent = 'Click a table to see its columns.';
       detailEmpty.classList.remove('hidden');
       detailPanel.classList.toggle('hidden', !show);
-      resetCash(null);
     }
 
     function resetTables(message) {
       tablesBody.innerHTML = '';
       tableRows.clear();
+      resetCash(null);
+      showQueryPanel(null);
+      showMappingPanel(null);
       tablesWrap.classList.add('hidden');
       tablesMeta.classList.add('hidden');
       tablesTitle.textContent = 'Tables';
@@ -634,6 +697,9 @@
         });
         tablesBody.appendChild(frag);
         rememberLast(dbName, null, null);
+        loadSalarySource(dbName);
+        showQueryPanel(dbName);
+        showMappingPanel(dbName);
 
         const views = data.details.filter((t) => /view/i.test(t.type)).length;
         tablesMeta.textContent = `${data.count - views} table(s)` + (views ? `, ${views} view(s)` : '') + ' — click one to see its columns';
@@ -670,7 +736,6 @@
       resetDetail(true);
       const reqId = detailRequestId;
       const label = session.engine === 'mssql' ? `${t.schema}.${t.name}` : t.name;
-      resetCash(t);
       rememberLast(session.database, t.name, t.schema);
       detailTitle.textContent = `Details — ${label}`;
       detailEmpty.textContent = `Loading columns of ${label}…`;
@@ -731,23 +796,70 @@
     const cashBody = $('cash-body');
     const cashOnly = $('cash-only');
 
-    let cashTable = null;
+    let cashDb = null;
     let cashResult = null;
+    let sourceRequestId = 0;
+    const procSelect = $('salary-proc');
     let cashRequestId = 0;
 
     const money = (n) => Math.round(n).toLocaleString('en-IN');
     const SOURCE_LABEL = { employee: 'Employee', designation: 'Designation', default: 'Default 1.0' };
 
-    function resetCash(table) {
+    /** Clears results; shows the panel for dbName (or hides it when dbName is null). */
+    function resetCash(dbName) {
       cashRequestId++;
-      cashTable = table;
+      sourceRequestId++;
+      cashDb = dbName;
       cashResult = null;
       cashBody.innerHTML = '';
       cashStats.innerHTML = '';
       for (const el of [cashStatus, cashStats, cashActions, cashWrap, $('trace-hint'), traceEl]) el.classList.add('hidden');
       traceEl.innerHTML = '';
-      cashPanel.classList.toggle('hidden', !table);
-      if (table) $('cash-title').textContent = `Cash slips — ${table.name}`;
+      cashPanel.classList.toggle('hidden', !dbName);
+    }
+
+    const procKey = (db) => `cashProc:${db}`;
+    const readPref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+    const writePref = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } };
+    procSelect.addEventListener('change', () => { if (cashDb) writePref(procKey(cashDb), procSelect.value); });
+
+    /** Checks for MonthWiseSalaryInfo + Ext in dbName and fills the salary month list. */
+    async function loadSalarySource(dbName) {
+      resetCash(dbName);
+      const reqId = sourceRequestId;
+      $('cash-title').textContent = 'Cash slips';
+      $('cash-source').textContent = 'Looking for MonthWiseSalaryInfo + MonthWiseSalaryInfoExt…';
+      procSelect.innerHTML = '';
+      cashBtn.disabled = true;
+      try {
+        const data = await postJSON('/api/salary-source', { ...session, database: dbName });
+        if (reqId !== sourceRequestId) return;
+        if (!data.found) {
+          $('cash-source').textContent = '';
+          setStatus(cashStatus, 'warn', 'This database has no MonthWiseSalaryInfo + MonthWiseSalaryInfoExt, so cash slips are not available here.', data.message);
+          return;
+        }
+        $('cash-title').textContent = 'Cash slips — MonthWiseSalaryInfo + Ext';
+        $('cash-source').textContent = `Source: ${data.tables.info} joined with ${data.tables.ext} on EmployeeCode + SalaryProcID`;
+        if (!data.ready) {
+          setStatus(cashStatus, 'warn', 'Required columns are missing, cash slips cannot be calculated.', data.message);
+          return;
+        }
+        for (const p of data.procs) {
+          const o = document.createElement('option');
+          o.value = p.id;
+          o.textContent = `${p.id}  (${p.rows.toLocaleString()} rows)`;
+          procSelect.appendChild(o);
+        }
+        const last = readPref(procKey(dbName));
+        if (last && data.procs.some((p) => p.id === last)) procSelect.value = last;
+        cashBtn.disabled = !data.procs.length;
+        if (!data.procs.length) setStatus(cashStatus, 'warn', 'MonthWiseSalaryInfo has no rows yet.');
+        else if (data.warnings.length) setStatus(cashStatus, 'warn', data.warnings.join(' '));
+      } catch (err) {
+        if (reqId !== sourceRequestId) return;
+        setStatus(cashStatus, 'warn', err.message || 'Could not read the salary tables.', err.detail);
+      }
     }
 
     function shownSlips() {
@@ -761,7 +873,7 @@
       shownSlips().forEach((s, i) => {
         const tr = document.createElement('tr');
         tr.innerHTML = '<td class="num"></td><td class="mono"></td><td></td><td></td><td class="mono muted"></td>' +
-          '<td class="r"></td><td class="r mono"></td><td><span class="badge"></span></td><td class="r"></td><td class="r"></td><td class="r"></td>';
+          '<td class="r"></td><td class="r mono"></td><td><span class="badge"></span></td><td class="r"></td><td class="r"></td>';
         const cells = [i + 1, s.displayCode, s.name, s.designation, s.doj, money(s.gross), s.ratio.toFixed(4)];
         cells.forEach((v, k) => { tr.children[k].textContent = v; });
         const badge = tr.children[7].firstChild;
@@ -769,7 +881,6 @@
         badge.classList.add(s.ratioSource);
         tr.children[8].textContent = money(s.bank.Total);
         tr.children[9].textContent = money(s.cash.Total);
-        tr.children[10].textContent = money(s.netBank);
         tr.tabIndex = 0;
         tr.title = 'Click to see the full calculation';
         const open = () => showTrace(s, tr);
@@ -784,128 +895,123 @@
     const escHTML = (v) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
     const dec = (n, d = 2) => Number(n).toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
     const traceEl = $('trace');
+    const cashCtx = { body: cashBody, el: traceEl };
 
-    function hideTrace() {
-      traceEl.classList.add('hidden');
-      traceEl.innerHTML = '';
-      for (const r of cashBody.children) r.removeAttribute('aria-selected');
+    function hideTrace(ctx = cashCtx) {
+      ctx.el.classList.add('hidden');
+      ctx.el.innerHTML = '';
+      for (const r of ctx.body.children) r.removeAttribute('aria-selected');
     }
 
     /** Renders every step behind one employee's numbers. Shown on screen only, never printed. */
-    function showTrace(s, row) {
-      for (const r of cashBody.children) r.removeAttribute('aria-selected');
+    function showTrace(s, row, ctx = cashCtx) {
+      for (const r of ctx.body.children) r.removeAttribute('aria-selected');
       row.setAttribute('aria-selected', 'true');
       const t = s.trace;
       const lk = t.lookup;
       const h = escHTML;
 
       // Step 1: eligibility
-      const dojNote = t.rawDOJ && t.rawDOJ !== s.doj ? ` (DB-te likha "${h(t.rawDOJ)}")` : '';
+      const dojNote = t.rawDOJ && t.rawDOJ !== s.doj ? ` (stored as "${h(t.rawDOJ)}")` : '';
       const step1 =
-        `DOJ        = ${h(s.doj)}${dojNote}\n` +
-        `Cut-off    = ${h(t.cutoff)}  →  ${t.joinedBefore ? 'cut-off-er AGE join' : 'cut-off-er DINE/PORE join'}\n` +
-        `Threshold  = ${money(s.threshold)}\n` +
-        `Gross      = ${money(s.gross)}  ≥  ${money(s.threshold)}  ✓\n` +
-        `DOS        = ${t.dos ? h(t.dos) + '  (cut-off-er age na, tai rakha holo)' : 'nei (active)'}`;
+        `1. DOS      = empty  →  active employee  ✓\n` +
+        `2. DOJ      = ${h(s.doj)}${dojNote}\n` +
+        `   Cut-off  = ${h(t.cutoff)}  →  ${t.joinedBefore ? 'joined BEFORE the cut-off' : 'joined ON/AFTER the cut-off'}\n` +
+        `   Threshold= ${money(s.threshold)}\n` +
+        `   OrgGross = ${money(s.gross)}  ≥  ${money(s.threshold)}  ✓`;
 
       // Step 2: ratio lookup, in the order the server tried it
       const tried = [];
       const codeLine = (col, val) => {
-        if (val == null || val === '') return `${col.padEnd(20)} = (khali)  →  skip`;
+        if (val == null || val === '') return `${col.padEnd(20)} = (empty)  →  skipped`;
         const hit = lk.matchedBy === col;
-        return `${col.padEnd(20)} = "${h(val)}"  →  ${hit ? 'MILECHE' : 'reference-e nei'}`;
+        return `${col.padEnd(20)} = "${h(val)}"  →  ${hit ? 'MATCHED' : 'not in reference'}`;
       };
       tried.push(codeLine('EmployeeCode', lk.employeeCode));
       if (lk.matchedBy !== 'EmployeeCode') tried.push(codeLine('DisplayEmployeeCode', lk.displayCode));
       if (s.ratioSource !== 'employee') {
         tried.push(`${'Designation'.padEnd(20)} = "${h(lk.designation)}"  →  ` +
-          (s.ratioSource === 'designation' ? `MILECHE ("${h(lk.matchedKey)}" average)` : 'DesignationAverage-e nei'));
+          (s.ratioSource === 'designation' ? `MATCHED ("${h(lk.matchedKey)}" average)` : 'not in DesignationAverage'));
       }
-      if (s.ratioSource === 'default') tried.push('Kono match nei      →  default ratio 1.0 (cash 0)');
+      if (s.ratioSource === 'default') tried.push('No match            →  default ratio 1.0 (no cash)');
       tried.push(`\nRatio = ${t.ratioExact}`);
-      const sourceNote = { employee: 'Employee-r nijer ratio', designation: 'Designation-er average ratio', default: 'Default ratio' }[s.ratioSource];
+      const sourceNote = { employee: "Employee's own ratio", designation: 'Designation average ratio', default: 'Default ratio' }[s.ratioSource];
 
       // Step 3: bank / cash
       const step3 =
-        `Bank = Gross ÷ Ratio\n` +
+        `Bank = OrgGross ÷ Ratio\n` +
         `     = ${money(s.gross)} ÷ ${t.ratioExact}\n` +
         `     = ${dec(t.bankExact, 4)}  →  round  →  ${money(s.bank.Total)}\n\n` +
-        `Cash = Gross − Bank\n` +
+        `Cash = OrgGross − Bank\n` +
         `     = ${money(s.gross)} − ${money(s.bank.Total)}  =  ${money(s.cash.Total)}\n\n` +
         `Bank ${dec(s.bank.Total / s.gross * 100)}%  ·  Cash ${dec(s.cash.Total / s.gross * 100)}%`;
 
       // Step 4: component split
-      const partRows = PARTS.filter((p) => t.parts[p] || s.bank[p] || s.cash[p]).map((p) => {
+      const partRows = PARTS.map((p) => {
         const pct = t.parts[p] / s.gross;
         const how = p === 'Basic'
-          ? 'baki (remainder)'
+          ? 'remainder'
           : `${money(s.cash.Total)} × ${dec(pct * 100)}% = ${dec(s.cash.Total * pct)}`;
-        return `<tr><td>${PART_LABEL[p]}</td><td class="r">${money(t.parts[p])}</td><td class="r">${dec(pct * 100)}%</td>` +
+        return `<tr><td>${ORG_LABEL[p]}</td><td class="r">${money(t.parts[p])}</td><td class="r">${dec(pct * 100)}%</td>` +
           `<td class="r">${money(s.bank[p])}</td><td class="r">${money(s.cash[p])}</td><td class="mono muted">${how}</td></tr>`;
       }).join('');
       const nonBasicCash = PARTS.filter((p) => p !== 'Basic').reduce((a, p) => a + s.cash[p], 0);
       const nonBasicBank = PARTS.filter((p) => p !== 'Basic').reduce((a, p) => a + s.bank[p], 0);
 
-      // Step 5: deductions
-      const items = Object.entries(t.deductionItems);
-      let step5 = items.length
-        ? items.map(([k, v]) => `${k.padEnd(18)} ${money(v).padStart(10)}`).join('\n') + '\n'
-        : 'Kono deduction column-e taka nei\n';
-      step5 += t.deductionSource === 'TotalDeductionsListed'
-        ? `\nTotal (TotalDeductionsListed column theke) = ${money(s.deductions)}`
-        : `\nTotal (upore-r column gulo jog kore)       = ${money(s.deductions)}`;
-      const itemSum = items.reduce((a, [, v]) => a + v, 0);
-      if (t.deductionSource === 'TotalDeductionsListed' && items.length && Math.round(itemSum) !== s.deductions) {
-        step5 += `\n⚠ Column gulor jogfol ${money(itemSum)}, TotalDeductionsListed-er sathe mile na`;
-      }
-      step5 += `\n\nNet bank = Bank − Deduction = ${money(s.bank.Total)} − ${money(s.deductions)} = ${money(s.netBank)}`;
+      // Org heads should add up to OrgGross; any gap was absorbed by Basic.
+      const gap = Math.round(s.gross - t.partsSum);
+      const gapNote = gap
+        ? `<div class="calc"><span class="warn">⚠ OrgBasic + OrgHouseRent + OrgMedical + OrgConvence = ${money(t.partsSum)}, OrgGross = ${money(s.gross)}. The difference of ${money(gap)} was added to Basic.</span></div>`
+        : '';
 
-      // Step 6: cross-checks
+      // Step 5: cross-checks
       const ok = s.bank.Total + s.cash.Total === s.gross;
-      const step6 =
-        `Bank + Cash   = ${money(s.bank.Total)} + ${money(s.cash.Total)} = ${money(s.bank.Total + s.cash.Total)}  ${ok ? '✓ Gross-er sathe mile' : '✗ Gross-er sathe mile NA'}\n` +
-        `Hate pabe     = Net bank + Cash = ${money(s.netBank)} + ${money(s.cash.Total)} = ${money(s.netBank + s.cash.Total)}`;
+      const step5 =
+        `Bank + Cash = ${money(s.bank.Total)} + ${money(s.cash.Total)} = ${money(s.bank.Total + s.cash.Total)}  ${ok ? '✓ matches OrgGross' : '✗ does NOT match OrgGross'}\n` +
+        `On the slip = Cash Basic ${money(s.cash.Basic)} + House Rent ${money(s.cash.HouseRent)} + Medical ${money(s.cash.Medical)} + Conveyance ${money(s.cash.Conveyance)} = ${money(s.cash.Total)}`;
 
-      traceEl.innerHTML = `
+      ctx.el.innerHTML = `
         <button type="button" class="secondary close">Close</button>
         <h3>Calculation trace — ${h(s.displayCode)}</h3>
-        <p class="who">${h(s.name)} · ${h(s.designation)}${s.department ? ' · ' + h(s.department) : ''}${s.unit ? ' · ' + h(s.unit) : ''}</p>
+        <p class="who">${h(s.name)} · ${h(s.designation)}${s.department ? ' · ' + h(s.department) : ''}${s.unit ? ' · ' + h(s.unit) : ''} · SalaryProcID ${h(t.salaryProcId)}</p>
         <ol>
-          <li><b>Cash pabe kina</b><div class="calc">${step1}</div></li>
-          <li><b>Ratio khoja — <span class="${s.ratioSource === 'default' ? 'warn' : 'pass'}">${sourceNote}</span></b><div class="calc">${tried.join('\n')}</div></li>
-          <li><b>Bank ar cash bhag</b><div class="calc">${step3}</div></li>
-          <li><b>Vag onujayi breakdown</b>
+          <li><b>Eligibility</b><div class="calc">${step1}</div></li>
+          <li><b>Ratio lookup — <span class="${s.ratioSource === 'default' ? 'warn' : 'pass'}">${sourceNote}</span></b><div class="calc">${tried.join('\n')}</div></li>
+          <li><b>Bank / cash split</b><div class="calc">${step3}</div></li>
+          <li><b>Breakdown by component</b>
             <div class="table-wrap" style="max-height:none"><table>
-              <thead><tr><th>Vag</th><th class="r">Gross-e</th><th class="r">%</th><th class="r">Bank</th><th class="r">Cash</th><th>Cash kivabe</th></tr></thead>
+              <thead><tr><th>Component</th><th class="r">Org amount</th><th class="r">%</th><th class="r">Bank</th><th class="r">Cash</th><th>How cash was calculated</th></tr></thead>
               <tbody>${partRows}</tbody>
-              <tfoot><tr><td>Mot</td><td class="r">${money(s.gross)}</td><td class="r">100%</td><td class="r">${money(s.bank.Total)}</td><td class="r">${money(s.cash.Total)}</td><td></td></tr></tfoot>
+              <tfoot><tr><td>OrgGross</td><td class="r">${money(s.gross)}</td><td class="r">100%</td><td class="r">${money(s.bank.Total)}</td><td class="r">${money(s.cash.Total)}</td><td></td></tr></tfoot>
             </table></div>
-            <div class="calc">Round korar por baki Basic-e: cash ${money(s.cash.Total)} − ${money(nonBasicCash)} = ${money(s.cash.Basic)}, bank ${money(s.bank.Total)} − ${money(nonBasicBank)} = ${money(s.bank.Basic)}</div>
+            <div class="calc">Rounding remainder goes to Basic: cash ${money(s.cash.Total)} − ${money(nonBasicCash)} = ${money(s.cash.Basic)}, bank ${money(s.bank.Total)} − ${money(nonBasicBank)} = ${money(s.bank.Basic)}</div>
+            ${gapNote}
           </li>
-          <li><b>Deduction (shudhu bank theke)</b><div class="calc">${step5}</div></li>
-          <li><b>Check</b><div class="calc"><span class="${ok ? 'pass' : 'warn'}">${step6}</span></div></li>
+          <li><b>Check</b><div class="calc"><span class="${ok ? 'pass' : 'warn'}">${step5}</span></div></li>
         </ol>`;
-      traceEl.querySelector('.close').addEventListener('click', hideTrace);
-      traceEl.classList.remove('hidden');
-      traceEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      ctx.el.querySelector('.close').addEventListener('click', () => hideTrace(ctx));
+      ctx.el.classList.remove('hidden');
+      ctx.el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     cashOnly.addEventListener('change', renderCashTable);
 
     cashForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!session || !cashTable) return;
+      if (!session || !cashDb) return;
       const cutoff = $('cutoff').value;
+      const salaryProcId = procSelect.value;
+      if (!salaryProcId) { setStatus(cashStatus, 'warn', 'Pick a salary month (SalaryProcID).'); return; }
       if (!cutoff) { setStatus(cashStatus, 'warn', 'Pick a cut-off date.'); return; }
 
       const reqId = ++cashRequestId;
       cashBtn.disabled = true;
       cashBtn.textContent = 'Calculating…';
       cashStatus.className = 'status ok';
-      cashStatus.textContent = `Reading ${cashTable.name} and calculating…`;
+      cashStatus.textContent = `Reading SalaryProcID ${salaryProcId} and calculating…`;
 
       try {
-        const data = await postJSON('/api/cash-slips', { ...session, schema: cashTable.schema, table: cashTable.name, cutoff });
+        const data = await postJSON('/api/cash-slips', { ...session, database: cashDb, salaryProcId, cutoff });
         if (reqId !== cashRequestId) return;
         cashResult = data;
         const s = data.summary;
@@ -923,9 +1029,12 @@
 
         const src = s.bySource;
         let msg = `Ratio source — employee: ${src.employee || 0}, designation: ${src.designation || 0}, default 1.0: ${src.default || 0}. ` +
-          `Skipped — below threshold: ${k.belowThreshold}, gross 0: ${k.noGross}, separated before cut-off: ${k.separated}, unreadable DOJ: ${k.badDOJ}.`;
-        const bad = data.badRows.length ? 'Unreadable DOJ: ' + data.badRows.map((r) => `${r.code} (${r.DOJ})`).join(', ') : '';
-        setStatus(cashStatus, k.badDOJ || src.default ? 'warn' : 'ok', msg, bad);
+          `Skipped — below threshold: ${k.belowThreshold}, OrgGross 0: ${k.noGross}, separated (has DOS): ${k.separated}, unreadable DOJ: ${k.badDOJ}, duplicate rows: ${k.duplicate}.`;
+        if (data.warnings && data.warnings.length) msg += ' ' + data.warnings.join(' ');
+        const details = [];
+        if (data.badRows.length) details.push('Unreadable DOJ: ' + data.badRows.map((r) => `${r.code} (${r.DOJ})`).join(', '));
+        if (data.duplicates.length) details.push('Duplicate EmployeeCode (only the first row used): ' + data.duplicates.join(', '));
+        setStatus(cashStatus, k.badDOJ || k.duplicate || src.default || (data.warnings && data.warnings.length) ? 'warn' : 'ok', msg, details.join(' · '));
 
         renderCashTable();
         cashActions.classList.remove('hidden');
@@ -941,36 +1050,39 @@
       }
     });
 
-    const PARTS = ['Basic', 'HouseRent', 'Medical', 'Conveyance', 'Others'];
-    const PART_LABEL = { Basic: 'Basic', HouseRent: 'House rent', Medical: 'Medical', Conveyance: 'Conveyance', Others: 'Other allowances' };
+    const PARTS = ['Basic', 'HouseRent', 'Medical', 'Conveyance'];
+    const PART_LABEL = { Basic: 'Cash Basic', HouseRent: 'Cash House Rent', Medical: 'Cash Medical', Conveyance: 'Cash Conveyance' };
+    const ORG_LABEL = { Basic: 'Basic (OrgBasic)', HouseRent: 'House rent (OrgHouseRent)', Medical: 'Medical (OrgMedical)', Conveyance: 'Conveyance (OrgConvence)' };
 
-    $('csv-btn').addEventListener('click', () => {
-      const slips = shownSlips();
+    /** Downloads slips as CSV; refOf(slip) gives its salary reference (SalaryProcID). */
+    function downloadCsv(slips, refOf, filename) {
       if (!slips.length) return;
-      const head = ['EmployeeCode', 'DisplayEmployeeCode', 'EmployeeName', 'Designation', 'Department', 'Unit', 'DOJ', 'Gross', 'CashRatio', 'RatioSource',
-        ...PARTS.map((p) => 'Bank_' + p), 'Bank_Total', 'Deductions', 'Net_Bank', ...PARTS.map((p) => 'Cash_' + p), 'Cash_Total'];
+      const head = ['SalaryProcID', 'EmployeeCode', 'DisplayEmployeeCode', 'EmployeeName', 'Designation', 'Department', 'Unit', 'DOJ', 'OrgGross', 'CashRatio', 'RatioSource',
+        ...PARTS.map((p) => 'Bank_' + p), 'Bank_Total', ...PARTS.map((p) => 'Cash_' + p), 'Gross_Cash'];
       const esc = (v) => { const t = String(v ?? ''); return /[",\r\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
       const lines = [head.join(',')];
       for (const s of slips) {
-        lines.push([s.code, s.displayCode, s.name, s.designation, s.department, s.unit, s.doj, s.gross, s.ratio, s.ratioSource,
-          ...PARTS.map((p) => s.bank[p]), s.bank.Total, s.deductions, s.netBank, ...PARTS.map((p) => s.cash[p]), s.cash.Total].map(esc).join(','));
+        lines.push([refOf(s), s.code, s.displayCode, s.name, s.designation, s.department, s.unit, s.doj, s.gross, s.ratio, s.ratioSource,
+          ...PARTS.map((p) => s.bank[p]), s.bank.Total, ...PARTS.map((p) => s.cash[p]), s.cash.Total].map(esc).join(','));
       }
       // BOM so Excel opens Bangla/UTF-8 names correctly.
       const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `cash_slips_${cashResult.table}_${cashResult.summary.cutoff}.csv`;
+      a.download = filename;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    });
+    }
+    const safeName = (v) => String(v).replace(/[^\w-]+/g, '_');
+    $('csv-btn').addEventListener('click', () => downloadCsv(shownSlips(), () => cashResult.salaryProcId, `cash_slips_${safeName(cashResult.salaryProcId)}.csv`));
 
-    $('print-btn').addEventListener('click', () => {
-      const slips = shownSlips();
+    /** Opens the slips in a print window (one slip per block; "Save as PDF" gives one PDF). */
+    function printSlips(slips, refOf) {
       if (!slips.length) return;
-      const cutoff = new Date(cashResult.summary.cutoff + 'T00:00:00');
+      const cutoff = new Date(slips[0].trace.cutoff + 'T00:00:00');
       const month = cutoff.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
       const h = (v) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-      const rowsFor = (part) => PARTS.filter((p) => part[p]).map((p) => `<tr><td>${PART_LABEL[p]}</td><td class="r">${money(part[p])}</td></tr>`).join('');
+      const rowsFor = (part) => PARTS.map((p) => `<tr><td>${PART_LABEL[p]}</td><td class="r">${money(part[p])}</td></tr>`).join('');
 
       const body = slips.map((s) => `
         <section class="slip">
@@ -979,10 +1091,11 @@
             <tr><th>Employee code</th><td>${h(s.displayCode)}</td><th>Designation</th><td>${h(s.designation)}</td></tr>
             <tr><th>Name</th><td>${h(s.name)}</td><th>Department</th><td>${h(s.department)}</td></tr>
             <tr><th>Date of joining</th><td>${h(s.doj)}</td><th>Unit</th><td>${h(s.unit)}</td></tr>
+            ${refOf(s) ? `<tr><th>Salary ref.</th><td>${h(refOf(s))}</td><th></th><td></td></tr>` : ''}
           </table>
           <div class="cols">
             <table><thead><tr><th colspan="2">Cash part</th></tr></thead><tbody>${rowsFor(s.cash)}</tbody>
-              <tfoot><tr><td>Total cash</td><td class="r">${money(s.cash.Total)}</td></tr></tfoot></table>
+              <tfoot><tr><td>Gross Cash</td><td class="r">${money(s.cash.Total)}</td></tr></tfoot></table>
           </div>
           <footer><span>Received by</span><span>Authorised signature</span></footer>
         </section>`).join('');
@@ -1010,7 +1123,567 @@
       w.document.close();
       w.focus();
       w.print();
+    }
+    $('print-btn').addEventListener('click', () => printSlips(shownSlips(), () => cashResult.salaryProcId));
+
+    /* ----------------------------- Query box ----------------------------- */
+
+    const QUERY_TEMPLATE = `-- TEMPLATE: replace the table / column names with the ones in your database, or paste your own query.
+-- Only SELECT is allowed (read-only). The result must contain these column names (rename with AS if needed):
+--   EmployeeCode, EmployeeName, Designation, OrgGross, OrgBasic, OrgHouseRent,
+--   OrgMedical, OrgConvence, DOJ, DOS
+SELECT
+    s.EmployeeCode,
+    e.EmployeeName,
+    e.Designation      AS Designation,     -- use your designation column name
+    s.OrgGross,
+    s.OrgBasic,
+    s.OrgHouseRent,
+    s.OrgMedical,
+    s.OrgConvence,
+    e.DOJ,
+    e.DOS,
+    s.SalaryProcID
+FROM dbo.SalaryTableName AS s              -- e.g. dbo.MonthWiseSalaryInfo
+JOIN dbo.EmployeeTableName AS e            -- e.g. dbo.MonthWiseSalaryInfoExt
+  ON e.EmployeeCode = s.EmployeeCode
+ AND e.SalaryProcID = s.SalaryProcID
+WHERE s.SalaryProcID = 'YOUR_SALARY_PROC_ID'   -- e.g. the SalaryProcID for September 2026
+`;
+
+    /**
+     * Results area shared by the Custom query and Manual mapping panels: summary,
+     * status, a table with checkboxes, calculation trace, and CSV / print of the
+     * ticked employees. run(sql) sends the SELECT to /api/query-slips.
+     */
+    function createResultsView(container, prefix) {
+      container.innerHTML = `
+        <div id="${prefix}-status" class="status hidden" role="status"></div>
+        <div id="${prefix}-stats" class="stats hidden" style="margin-top:14px"></div>
+        <div id="${prefix}-actions" class="cash-actions hidden">
+          <span id="${prefix}-selected" class="meta" style="margin:0"></span>
+          <span class="spacer"></span>
+          <button type="button" id="${prefix}-csv-btn" class="secondary">Download selected CSV</button>
+          <button type="button" id="${prefix}-print-btn">Download selected slips</button>
+        </div>
+        <div id="${prefix}-wrap" class="table-wrap hidden">
+          <table>
+            <thead><tr><th><input type="checkbox" id="${prefix}-all" class="row-check" aria-label="Select all" /></th><th>Employee ID</th><th>Name</th><th>Designation</th><th class="r">OrgGross</th><th class="r">Cash Basic</th><th class="r">Cash House Rent</th><th class="r">Cash Medical</th><th class="r">Cash Conveyance</th><th class="r">Total Cash</th></tr></thead>
+            <tbody id="${prefix}-body" class="clickable"></tbody>
+          </table>
+        </div>
+        <p id="${prefix}-hint" class="field-note hidden">Tick the employees whose slips you need. Click a row to see its full calculation (trace); the trace is never printed. Employees with ratio 1.0 have no cash, so their checkbox is disabled.</p>
+        <div id="${prefix}-trace" class="trace hidden" aria-live="polite"></div>`;
+      const el = (id) => container.querySelector(`#${prefix}-${id}`);
+      const status = el('status');
+      const stats = el('stats');
+      const actions = el('actions');
+      const wrap = el('wrap');
+      const body = el('body');
+      const all = el('all');
+      const hint = el('hint');
+      const ctx = { body, el: el('trace') };
+      const selected = new Set(); // EmployeeCode of ticked rows
+      let result = null;
+      let requestId = 0;
+
+      const selectable = () => (result ? result.slips.filter((s) => s.cash.Total > 0) : []);
+      const selectedSlips = () => (result ? result.slips.filter((s) => selected.has(s.code)) : []);
+
+      function reset() {
+        requestId++;
+        result = null;
+        selected.clear();
+        body.innerHTML = '';
+        stats.innerHTML = '';
+        for (const x of [status, stats, actions, wrap, hint]) x.classList.add('hidden');
+        hideTrace(ctx);
+      }
+
+      function updateSelection() {
+        const total = selectable().length;
+        const n = selected.size;
+        el('selected').textContent = `${n} selected of ${total}`;
+        all.checked = total > 0 && n === total;
+        all.indeterminate = n > 0 && n < total;
+        el('csv-btn').disabled = el('print-btn').disabled = n === 0;
+      }
+
+      all.addEventListener('change', () => {
+        selected.clear();
+        if (all.checked) for (const s of selectable()) selected.add(s.code);
+        for (const box of body.querySelectorAll('input.row-check')) box.checked = selected.has(box.dataset.code);
+        updateSelection();
+      });
+
+      function render() {
+        body.innerHTML = '';
+        const frag = document.createDocumentFragment();
+        for (const s of result.slips) {
+          const tr = document.createElement('tr');
+          const noCash = s.cash.Total === 0;
+          if (noCash) tr.className = 'no-cash';
+          tr.innerHTML = '<td><input type="checkbox" class="row-check" /></td><td class="mono"></td><td></td><td></td>' +
+            '<td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td><td class="r"></td>';
+          const box = tr.querySelector('input');
+          box.dataset.code = s.code;
+          box.disabled = noCash;
+          box.title = noCash ? 'Ratio 1.0: no cash' : "Tick to include this employee's slip";
+          box.setAttribute('aria-label', `Select ${s.displayCode}`);
+          box.addEventListener('click', (e) => e.stopPropagation());
+          box.addEventListener('change', () => {
+            if (box.checked) selected.add(s.code); else selected.delete(s.code);
+            updateSelection();
+          });
+          const cells = [s.displayCode, s.name, s.designation, money(s.gross), money(s.cash.Basic), money(s.cash.HouseRent), money(s.cash.Medical), money(s.cash.Conveyance), money(s.cash.Total)];
+          cells.forEach((v, k) => { tr.children[k + 1].textContent = v; });
+          tr.tabIndex = 0;
+          tr.title = 'Click to see the full calculation';
+          const open = () => showTrace(s, tr, ctx);
+          tr.addEventListener('click', open);
+          tr.addEventListener('keydown', (ev) => { if (ev.target === tr && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); open(); } });
+          frag.appendChild(tr);
+        }
+        body.appendChild(frag);
+        updateSelection();
+      }
+
+      /** Runs sql through /api/query-slips and shows the eligible employees. */
+      async function run(sqlText, cutoff, button, label) {
+        if (!session || !session.database) return;
+        if (!cutoff) { setStatus(status, 'warn', 'Pick a cut-off date.'); return; }
+        reset();
+        const reqId = requestId;
+        if (button) { button.disabled = true; button.textContent = 'Running…'; }
+        setStatus(status, 'ok', 'Running the query…');
+        try {
+          const data = await postJSON('/api/query-slips', { ...session, sql: sqlText, cutoff });
+          if (reqId !== requestId) return;
+          result = data;
+          const sm = data.summary;
+          const k = data.skipped;
+          stats.append(
+            stat(sm.totalRows.toLocaleString(), 'rows returned'),
+            stat(sm.qualified.toLocaleString(), 'eligible (in table)'),
+            stat(sm.withCash.toLocaleString(), 'with cash'),
+            stat(money(sm.totalCash), 'total cash (৳)'),
+          );
+          stats.classList.remove('hidden');
+
+          let msg = `Excluded — has DOS (inactive): ${k.separated}, below threshold: ${k.belowThreshold}, OrgGross 0: ${k.noGross}, unreadable DOJ: ${k.badDOJ}, duplicate: ${k.duplicate}.`;
+          if (data.warnings.length) msg += ' ' + data.warnings.join(' ');
+          const details = [];
+          if (data.badRows.length) details.push('Unreadable DOJ: ' + data.badRows.map((r) => `${r.code} (${r.DOJ})`).join(', '));
+          if (data.duplicates.length) details.push('Duplicate EmployeeCode (only the first row used): ' + data.duplicates.join(', '));
+          setStatus(status, k.badDOJ || k.duplicate || data.warnings.length ? 'warn' : 'ok', msg, details.join(' · '));
+
+          if (!data.slips.length) {
+            setStatus(status, 'warn', 'The query ran, but no employee meets the conditions. ' + msg, details.join(' · '));
+            return;
+          }
+          render();
+          for (const x of [actions, wrap, hint]) x.classList.remove('hidden');
+        } catch (err) {
+          if (reqId !== requestId) return;
+          setStatus(status, 'warn', err.message || 'The query failed.', err.detail && err.detail !== err.message ? err.detail : '');
+          console.warn(`[DB Explorer] ${prefix} run failed:`, err);
+        } finally {
+          if (button) { button.disabled = false; button.textContent = label; }
+        }
+      }
+
+      const refOfRow = (s) => s.trace.salaryProcId || '';
+      el('csv-btn').addEventListener('click', () => downloadCsv(selectedSlips(), refOfRow, `cash_slips_${prefix}_${new Date().toISOString().slice(0, 10)}.csv`));
+      el('print-btn').addEventListener('click', () => printSlips(selectedSlips(), refOfRow));
+
+      return { reset, run, warn: (m, d) => setStatus(status, 'warn', m, d) };
+    }
+
+    /* ---- Custom query panel ---- */
+
+    const queryPanel = $('query-panel');
+    const querySql = $('query-sql');
+    const queryRunBtn = $('query-run-btn');
+    const queryView = createResultsView($('query-results'), 'query');
+    const queryKey = (db) => `cashQuery:${db}`;
+
+    /** Shows the Query panel for dbName with its last query (or the template); hides it for null. */
+    function showQueryPanel(dbName) {
+      queryView.reset();
+      queryPanel.classList.toggle('hidden', !dbName);
+      if (dbName) querySql.value = readPref(queryKey(dbName)) || QUERY_TEMPLATE;
+    }
+
+    const runQuery = () => queryView.run(querySql.value, $('query-cutoff').value, queryRunBtn, 'Run query');
+
+    querySql.addEventListener('input', () => { if (session && session.database) writePref(queryKey(session.database), querySql.value); });
+    querySql.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runQuery(); }
     });
+    $('query-template-btn').addEventListener('click', () => {
+      querySql.value = QUERY_TEMPLATE;
+      if (session && session.database) writePref(queryKey(session.database), QUERY_TEMPLATE);
+      querySql.focus();
+    });
+    queryRunBtn.addEventListener('click', () => runQuery());
+
+    /* ----------------------- Manual mapping panel ----------------------- */
+
+    // Fields the calculation needs. pref = which table usually holds it; names = auto-match candidates.
+    const MAP_FIELDS = [
+      { key: 'EmployeeCode', label: 'Employee ID', required: true, pref: 's', names: ['EmployeeCode', 'EmpCode', 'EmployeeID', 'EmpID'] },
+      { key: 'EmployeeName', label: 'Employee name', required: true, pref: 'e', names: ['EmployeeName', 'EmpName', 'FullName', 'Name'] },
+      { key: 'Designation', label: 'Designation', required: true, pref: 'e', names: ['Designation', 'DesignationName', 'DesigName', 'Desig', 'DesignationTitle'] },
+      { key: 'OrgGross', label: 'OrgGross', required: true, pref: 's', names: ['OrgGross'] },
+      { key: 'OrgBasic', label: 'OrgBasic', required: true, pref: 's', names: ['OrgBasic'] },
+      { key: 'OrgHouseRent', label: 'OrgHouseRent', required: true, pref: 's', names: ['OrgHouseRent'] },
+      { key: 'OrgMedical', label: 'OrgMedical', required: true, pref: 's', names: ['OrgMedical'] },
+      { key: 'OrgConvence', label: 'OrgConvence', required: true, pref: 's', names: ['OrgConvence', 'OrgConveyance'] },
+      { key: 'DOJ', label: 'DOJ (date of joining)', required: true, pref: 'e', names: ['DOJ', 'DateOfJoining', 'JoiningDate'] },
+      { key: 'DOS', label: 'DOS (date of separation)', required: false, recommended: true, pref: 'e', names: ['DOS', 'DateOfSeparation', 'SeparationDate'] },
+      { key: 'DisplayEmployeeCode', label: 'Display code', required: false, pref: 'e', names: ['DisplayEmployeeCode'] },
+      { key: 'Department', label: 'Department', required: false, pref: 'e', names: ['Department', 'DepartmentName', 'DeptName', 'Dept'] },
+    ];
+    const MAX_EXTRA = 3;
+    const mapPanel = $('map-panel');
+    const mapBody = $('map-body');
+    const mapView = createResultsView($('map-results'), 'map');
+    const mapKey = (db) => `cashMap:${db}`;
+    const colCache = new Map(); // "schema.table" -> column names
+    let mapDb = null;
+    let map = null;
+    let monthValues = [];
+    let monthFor = '';
+    let showSql = false;
+
+    const tableList = () => [...tableRows.values()].map(({ t }) => ({ key: `${t.schema}.${t.name}`, schema: t.schema, name: t.name }));
+    const tableByKey = (k) => tableList().find((t) => t.key === k);
+    const findTable = (name) => tableList().find((t) => t.name.toLowerCase() === name.toLowerCase());
+    const pickCol = (cols, names) => {
+      const lower = new Map((cols || []).map((c) => [c.toLowerCase(), c]));
+      for (const n of names) if (lower.has(n.toLowerCase())) return lower.get(n.toLowerCase());
+      return '';
+    };
+
+    function emptyMapping() {
+      return { salary: '', employee: '', empKey: { s: '', e: '' }, monthKey: { s: '', e: '' }, extras: [], fields: {}, month: '' };
+    }
+
+    /** Alias -> table key, for the salary (s), employee (e) and extra (x1..x3) tables. */
+    function aliases() {
+      const out = [];
+      if (map.salary) out.push({ alias: 's', key: map.salary, label: 'Salary table' });
+      if (map.employee) out.push({ alias: 'e', key: map.employee, label: 'Employee table' });
+      map.extras.forEach((x, i) => { if (x.table) out.push({ alias: `x${i + 1}`, key: x.table, label: `Added table ${i + 1}` }); });
+      return out;
+    }
+    const colsOfAlias = (alias) => {
+      const a = aliases().find((x) => x.alias === alias);
+      return a ? colCache.get(a.key) || [] : [];
+    };
+
+    async function loadColumnsFor(key) {
+      if (!key || colCache.has(key)) return;
+      const t = tableByKey(key);
+      if (!t) return;
+      const data = await postJSON('/api/columns', { ...session, schema: t.schema, table: t.name, noCount: true });
+      colCache.set(key, data.columns.map((c) => c.name));
+    }
+
+    /** Drops choices that no longer exist, then fills every empty choice it can match by name. */
+    function autoFill() {
+      const sc = colCache.get(map.salary) || [];
+      const ec = colCache.get(map.employee) || [];
+      const ok = (alias, col) => col && colsOfAlias(alias).includes(col);
+
+      if (!sc.includes(map.empKey.s)) map.empKey.s = pickCol(sc, ['EmployeeCode', 'EmpCode', 'EmployeeID']);
+      if (!ec.includes(map.empKey.e)) map.empKey.e = pickCol(ec, [map.empKey.s, 'EmployeeCode', 'EmpCode', 'EmployeeID']);
+      if (!sc.includes(map.monthKey.s)) map.monthKey.s = pickCol(sc, ['SalaryProcID', 'SalaryMonth', 'ProcID']);
+      if (map.monthKey.e && !ec.includes(map.monthKey.e)) map.monthKey.e = '';
+      if (!map.monthKey.e && map.monthKey.s) map.monthKey.e = pickCol(ec, [map.monthKey.s]);
+
+      map.extras.forEach((x, i) => {
+        const xc = colCache.get(x.table) || [];
+        const leftCols = colsOfAlias(x.left);
+        if (!aliases().some((a) => a.alias === x.left) || `x${i + 1}` === x.left) x.left = 'e';
+        if (!xc.includes(x.col) || !colsOfAlias(x.left).includes(x.leftCol)) {
+          // Join on a column both tables share, preferring ...ID columns.
+          const common = xc.filter((c) => colsOfAlias(x.left).some((l) => l.toLowerCase() === c.toLowerCase()));
+          const best = common.find((c) => /id$/i.test(c)) || common[0] || '';
+          x.col = best;
+          x.leftCol = best ? colsOfAlias(x.left).find((l) => l.toLowerCase() === best.toLowerCase()) : '';
+        }
+        void leftCols;
+      });
+
+      for (const f of MAP_FIELDS) {
+        const cur = map.fields[f.key];
+        if (cur && ok(cur.src, cur.col)) continue;
+        const order = [f.pref, ...aliases().map((a) => a.alias).filter((a) => a !== f.pref)];
+        let hit = null;
+        for (const alias of order) {
+          const col = pickCol(colsOfAlias(alias), f.names);
+          if (col) { hit = { src: alias, col }; break; }
+        }
+        map.fields[f.key] = hit || { src: cur && aliases().some((a) => a.alias === cur.src) ? cur.src : f.pref, col: '' };
+      }
+    }
+
+    const saveMapping = () => { if (mapDb) writePref(mapKey(mapDb), JSON.stringify(map)); };
+
+    async function refreshColumns() {
+      try {
+        for (const a of aliases()) await loadColumnsFor(a.key);
+      } catch (err) {
+        mapView.warn(err.message || 'Could not read the table columns.', err.detail);
+      }
+      autoFill();
+      saveMapping();
+      renderMapping();
+      loadMonths();
+    }
+
+    async function loadMonths() {
+      const t = tableByKey(map.salary);
+      const forKey = `${map.salary}|${map.monthKey.s}`;
+      if (!t || !map.monthKey.s) { monthValues = []; monthFor = ''; renderMonth(); return; }
+      if (forKey === monthFor) { renderMonth(); return; }
+      monthFor = forKey;
+      monthValues = null;
+      renderMonth();
+      try {
+        const data = await postJSON('/api/distinct-values', { ...session, schema: t.schema, table: t.name, column: map.monthKey.s });
+        if (monthFor !== forKey) return;
+        monthValues = data.values;
+        if (!monthValues.some((v) => v.id === map.month)) map.month = monthValues.length ? monthValues[0].id : '';
+        saveMapping();
+      } catch (err) {
+        monthValues = [];
+        mapView.warn(err.message || 'Could not list the salary months.', err.detail);
+      }
+      renderMonth();
+    }
+
+    /** Shows the panel for dbName, restoring its saved mapping or preselecting the known tables. */
+    async function showMappingPanel(dbName) {
+      mapView.reset();
+      mapDb = dbName;
+      mapPanel.classList.toggle('hidden', !dbName);
+      monthFor = '';
+      monthValues = [];
+      if (!dbName) return;
+      colCache.clear();
+      try { map = JSON.parse(readPref(mapKey(dbName)) || 'null'); } catch { map = null; }
+      if (!map || typeof map !== 'object') map = emptyMapping();
+      map = { ...emptyMapping(), ...map };
+      if (!tableByKey(map.salary)) map.salary = (findTable('MonthWiseSalaryInfo') || {}).key || '';
+      if (!tableByKey(map.employee)) map.employee = (findTable('MonthWiseSalaryInfoExt') || {}).key || '';
+      map.extras = (map.extras || []).filter((x) => tableByKey(x.table));
+      renderMapping();
+      await refreshColumns();
+    }
+
+    /* ---- rendering ---- */
+
+    const opt = (value, text, selected) => `<option value="${escHTML(value)}"${selected ? ' selected' : ''}>${escHTML(text)}</option>`;
+    const tableSelect = (id, value) => `<select id="${id}"><option value="">— select table —</option>${tableList().map((t) => opt(t.key, t.key, t.key === value)).join('')}</select>`;
+    const colSelect = (id, cols, value, empty = '— select column —') => `<select id="${id}">${opt('', empty, !value)}${cols.map((c) => opt(c, c, c === value)).join('')}</select>`;
+
+    function renderMapping() {
+      if (!map) return;
+      const sc = colCache.get(map.salary) || [];
+      const ec = colCache.get(map.employee) || [];
+      const al = aliases();
+      const missing = MAP_FIELDS.filter((f) => f.required && !(map.fields[f.key] && map.fields[f.key].col));
+      const required = MAP_FIELDS.filter((f) => f.required).length;
+
+      const extrasHtml = map.extras.map((x, i) => {
+        const self = `x${i + 1}`;
+        const leftOptions = al.filter((a) => a.alias !== self && (a.alias === 's' || a.alias === 'e' || Number(a.alias.slice(1)) < i + 1));
+        return `<div class="map-extra" data-i="${i}">
+          <span class="alias">${self}</span>
+          ${tableSelect(`map-x-table-${i}`, x.table)}
+          <span class="op">joined on</span>
+          <select id="map-x-left-${i}">${leftOptions.map((a) => opt(a.alias, a.label, a.alias === x.left)).join('')}</select>
+          <span class="op">.</span>
+          ${colSelect(`map-x-leftcol-${i}`, colsOfAlias(x.left), x.leftCol)}
+          <span class="op">=</span>
+          ${colSelect(`map-x-col-${i}`, colCache.get(x.table) || [], x.col)}
+          <button type="button" class="secondary" id="map-x-remove-${i}">Remove</button>
+        </div>`;
+      }).join('');
+
+      const fieldRows = MAP_FIELDS.map((f) => {
+        const cur = map.fields[f.key] || { src: f.pref, col: '' };
+        const isMissing = f.required && !cur.col;
+        const tag = f.required ? '<span title="required">*</span>' : '<span class="muted">optional</span>';
+        const flag = cur.col ? '<span class="map-ok">✓</span>'
+          : f.required ? '<span class="map-flag">needs a column</span>'
+          : f.recommended ? '<span class="map-flag" title="Without DOS, inactive employees cannot be excluded">recommended</span>' : '';
+        return `<tr class="${isMissing ? 'missing' : ''}">
+          <td><b>${escHTML(f.label)}</b> ${tag}</td>
+          <td><select id="map-src-${f.key}">${al.map((a) => opt(a.alias, `${a.label} (${a.alias})`, a.alias === cur.src)).join('')}</select></td>
+          <td>${colSelect(`map-col-${f.key}`, colsOfAlias(cur.src), cur.col, f.required ? '— select column —' : '— not used —')}</td>
+          <td>${flag}</td>
+        </tr>`;
+      }).join('');
+
+      mapBody.innerHTML = `
+        <p class="meta" style="margin:0 0 12px">Payroll calculation needs <b>${required} required fields</b> (marked *), plus DOS to exclude inactive employees. Display code and Department are optional.</p>
+        <div class="map-grid">
+          <label for="map-salary">Salary table</label>${tableSelect('map-salary', map.salary)}
+          <label for="map-employee">Employee table</label>${tableSelect('map-employee', map.employee)}
+          <label>Employee key</label>
+          <div class="map-join">${colSelect('map-ek-s', sc, map.empKey.s)}<span class="op">=</span>${colSelect('map-ek-e', ec, map.empKey.e)}</div>
+          <label>Month key</label>
+          <div class="map-join">${colSelect('map-mk-s', sc, map.monthKey.s, '— salary table month column —')}<span class="op">=</span>${colSelect('map-mk-e', ec, map.monthKey.e, '(employee table has no month column)')}</div>
+        </div>
+        <div class="map-section">Added tables (optional)</div>
+        ${extrasHtml || '<p class="field-note" style="margin:0 0 8px">None. Add a table when a field, such as Designation, is not in the salary or employee table.</p>'}
+        ${map.extras.length < MAX_EXTRA ? '<button type="button" class="secondary map-add" id="map-add">+ Add table</button>' : ''}
+        <div class="map-section">Fields</div>
+        <div class="table-wrap" style="max-height:none">
+          <table class="map-fields">
+            <thead><tr><th>Field</th><th>From table</th><th>Column</th><th></th></tr></thead>
+            <tbody>${fieldRows}</tbody>
+          </table>
+        </div>
+        <div id="map-missing" style="margin-top:10px"></div>
+        <div class="cash-controls" style="margin-top:12px">
+          <div><label for="map-month">Salary month</label><select id="map-month"></select></div>
+          <div><label for="map-cutoff">Cut-off date</label><input id="map-cutoff" type="date" value="${escHTML(map.cutoff || '2026-09-01')}" /></div>
+          <button type="button" id="map-sql-btn" class="secondary">${showSql ? 'Hide SQL' : 'Show SQL'}</button>
+          <button type="button" id="map-run-btn">Run</button>
+        </div>
+        <div id="map-sql-wrap" class="${showSql ? '' : 'hidden'}">
+          <pre id="map-sql" class="map-sql"></pre>
+          <button type="button" class="secondary map-add" id="map-copy-btn">Copy into the custom query box</button>
+        </div>`;
+
+      const miss = $('map-missing');
+      if (!map.salary || !map.employee) setStatus(miss, 'warn', 'Pick the salary table and the employee table.');
+      else if (!map.empKey.s || !map.empKey.e) setStatus(miss, 'warn', 'Pick the employee key column in both tables.');
+      else if (missing.length) setStatus(miss, 'warn', `${missing.length} required field(s) still need a column: ${missing.map((f) => f.label).join(', ')}.`);
+      else if (map.extras.some((x) => !x.table || !x.col || !x.leftCol)) setStatus(miss, 'warn', 'An added table is missing its table or join columns.');
+      else miss.className = 'hidden';
+
+      bindMapping();
+      renderMonth();
+      updateSqlPreview();
+    }
+
+    function renderMonth() {
+      const sel = $('map-month');
+      if (!sel || !map) return;
+      if (monthValues === null) { sel.innerHTML = opt('', 'Loading…', true); sel.disabled = true; return; }
+      sel.disabled = !map.monthKey.s;
+      sel.innerHTML = !map.monthKey.s ? opt('', '(no month column — all rows)', true)
+        : monthValues.map((v) => opt(v.id, `${v.id}  (${v.rows.toLocaleString()} rows)`, v.id === map.month)).join('') || opt('', 'No values', true);
+      updateSqlPreview();
+    }
+
+    function mappingProblem() {
+      if (!map.salary || !map.employee) return 'Pick the salary table and the employee table.';
+      if (!map.empKey.s || !map.empKey.e) return 'Pick the employee key column in both tables.';
+      const missing = MAP_FIELDS.filter((f) => f.required && !(map.fields[f.key] && map.fields[f.key].col));
+      if (missing.length) return `Required field(s) still need a column: ${missing.map((f) => f.label).join(', ')}.`;
+      if (map.extras.some((x) => !x.table || !x.col || !x.leftCol)) return 'An added table is missing its table or join columns.';
+      if (map.monthKey.s && !map.month) return 'Pick a salary month.';
+      return null;
+    }
+
+    /** Builds the read-only SELECT from the mapping (identifiers quoted for the engine). */
+    function buildMappingSql() {
+      const mssql = session.engine === 'mssql';
+      const q = (n) => (mssql ? `[${String(n).replace(/]/g, ']]')}]` : `\`${String(n).replace(/\`/g, '\`\`')}\``);
+      const tref = (key) => { const t = tableByKey(key); return mssql ? `${q(t.schema)}.${q(t.name)}` : q(t.name); };
+      const lit = (v) => `'${String(v).replace(/'/g, "''")}'`;
+      const cols = [];
+      for (const f of MAP_FIELDS) {
+        const m = map.fields[f.key];
+        if (m && m.col) cols.push(`    ${m.src}.${q(m.col)} AS ${q(f.key)}`);
+      }
+      if (map.monthKey.s) cols.push(`    s.${q(map.monthKey.s)} AS ${q('SalaryProcID')}`);
+      const lines = [
+        '-- Built by Manual mapping',
+        'SELECT',
+        cols.join(',\n'),
+        `FROM ${tref(map.salary)} AS s`,
+        `JOIN ${tref(map.employee)} AS e`,
+        `  ON e.${q(map.empKey.e)} = s.${q(map.empKey.s)}`,
+      ];
+      if (map.monthKey.s && map.monthKey.e) lines.push(` AND e.${q(map.monthKey.e)} = s.${q(map.monthKey.s)}`);
+      map.extras.forEach((x, i) => {
+        lines.push(`LEFT JOIN ${tref(x.table)} AS x${i + 1}`, `  ON x${i + 1}.${q(x.col)} = ${x.left}.${q(x.leftCol)}`);
+      });
+      if (map.monthKey.s && map.month) lines.push(`WHERE s.${q(map.monthKey.s)} = ${lit(map.month)}`);
+      return lines.join('\n');
+    }
+
+    function updateSqlPreview() {
+      const pre = $('map-sql');
+      if (!pre || !map) return;
+      const problem = mappingProblem();
+      pre.textContent = problem ? `-- Not ready yet: ${problem}` : buildMappingSql();
+    }
+
+    function bindMapping() {
+      const on = (id, fn) => { const x = $(id); if (x) x.addEventListener('change', fn); };
+      const tableChanged = () => { mapView.reset(); refreshColumns(); };
+      on('map-salary', (e) => { map.salary = e.target.value; tableChanged(); });
+      on('map-employee', (e) => { map.employee = e.target.value; tableChanged(); });
+      on('map-ek-s', (e) => { map.empKey.s = e.target.value; saveMapping(); renderMapping(); });
+      on('map-ek-e', (e) => { map.empKey.e = e.target.value; saveMapping(); renderMapping(); });
+      on('map-mk-s', (e) => { map.monthKey.s = e.target.value; saveMapping(); renderMapping(); loadMonths(); });
+      on('map-mk-e', (e) => { map.monthKey.e = e.target.value; saveMapping(); renderMapping(); });
+      on('map-month', (e) => { map.month = e.target.value; saveMapping(); updateSqlPreview(); });
+      on('map-cutoff', (e) => { map.cutoff = e.target.value; saveMapping(); });
+
+      map.extras.forEach((x, i) => {
+        on(`map-x-table-${i}`, (e) => { x.table = e.target.value; x.col = ''; x.leftCol = ''; tableChanged(); });
+        on(`map-x-left-${i}`, (e) => { x.left = e.target.value; x.leftCol = ''; autoFill(); saveMapping(); renderMapping(); });
+        on(`map-x-leftcol-${i}`, (e) => { x.leftCol = e.target.value; saveMapping(); renderMapping(); });
+        on(`map-x-col-${i}`, (e) => { x.col = e.target.value; saveMapping(); renderMapping(); });
+        const rm = $(`map-x-remove-${i}`);
+        if (rm) rm.addEventListener('click', () => {
+          map.extras.splice(i, 1);
+          // Fields that pointed at a removed or renumbered table fall back to the employee table.
+          for (const f of MAP_FIELDS) {
+            const m = map.fields[f.key];
+            if (m && m.src.startsWith('x')) {
+              const n = Number(m.src.slice(1));
+              if (n === i + 1) map.fields[f.key] = { src: f.pref, col: '' };
+              else if (n > i + 1) m.src = `x${n - 1}`;
+            }
+          }
+          autoFill(); saveMapping(); renderMapping();
+        });
+      });
+      const add = $('map-add');
+      if (add) add.addEventListener('click', () => { map.extras.push({ table: '', left: 'e', leftCol: '', col: '' }); saveMapping(); renderMapping(); });
+
+      for (const f of MAP_FIELDS) {
+        on(`map-src-${f.key}`, (e) => {
+          const src = e.target.value;
+          map.fields[f.key] = { src, col: pickCol(colsOfAlias(src), f.names) };
+          saveMapping(); renderMapping();
+        });
+        on(`map-col-${f.key}`, (e) => { map.fields[f.key].col = e.target.value; saveMapping(); renderMapping(); });
+      }
+
+      $('map-sql-btn').addEventListener('click', () => { showSql = !showSql; renderMapping(); });
+      $('map-copy-btn').addEventListener('click', () => {
+        if (mappingProblem()) return;
+        querySql.value = buildMappingSql();
+        if (session && session.database) writePref(queryKey(session.database), querySql.value);
+        queryPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      $('map-run-btn').addEventListener('click', () => {
+        const problem = mappingProblem();
+        if (problem) { mapView.warn(problem); return; }
+        mapView.run(buildMappingSql(), $('map-cutoff').value, $('map-run-btn'), 'Run');
+      });
+    }
 
     /* ------------------- Auto-connect with the saved connection ------------------- */
 

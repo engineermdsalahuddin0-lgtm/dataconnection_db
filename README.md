@@ -1,192 +1,268 @@
 # DB Explorer + Cash Slip
 
-MySQL ba SQL Server-e connect kore database ar table browse kora jay. Payroll table theke protyek employee-r salary **bank part** ar **cash part**-e bhag kore cash slip print kora jay.
+Connect to MySQL or SQL Server and browse databases and tables. From the payroll data, split each employee's salary into a **bank part** and a **cash part**, then print cash slips.
 
-> **Confidential:** `docs/` (reference Excel) ar `data/` (ratio JSON) folder-e cash ratio thake. Duto folder-i `.gitignore`-e ache. Kokhono commit, email ba share korben na.
+> **Confidential:** the `docs/` (reference Excel) and `data/` (ratio JSON) folders hold the cash ratios. Both are in `.gitignore`. Never commit, email or share them.
 
 ---
 
-## Read-only: system shudhu data pore
+## Read-only: the system only reads data
 
-Ei app database-e **kichu lekhe na, bodlay na, delete kore na**. Bhul kore-o jate na hoy, tai 3 ta lock ache:
+This app **never writes, changes or deletes** anything in the database. Three locks make sure that cannot happen even by mistake:
 
-| Lock | Ki kore |
+| Lock | What it does |
 |---|---|
-| **SQL guard** | Server-e pathanor age protyekta query check hoy. Shudhu ekta `SELECT` ba `SHOW` jete pare. `INSERT`, `UPDATE`, `DELETE`, `DROP`, `TRUNCATE`, `SELECT ... INTO`, `FOR UPDATE` ba ek-er beshi statement pathanor age-i atke jay. |
-| **DB session READ ONLY** | MySQL-e connect korei `SET SESSION TRANSACTION READ ONLY` chalano hoy. Code-e bhul thakleo MySQL server nije write refuse korbe. SQL Server-e shob query ekta transaction-er bhitore chole, ar sesh-e sob shomoy rollback hoy, kokhono commit hoy na. |
-| **HTTP lock** | Browser theke shudhu `GET` (page), 4 ta read endpoint, ar connection save-er 3 ta local endpoint-e `POST` cholbe. Onno shob `POST`, `PUT`, `DELETE`, `PATCH` 405 diye bondho. Save endpoint gulo shudhu local `data/connection.json` file-e lekhe, DB-te kokhono na. |
+| **SQL guard** | Every query is checked before it is sent to the server, including queries typed in the Query box. Only a single `SELECT` (or `WITH ... SELECT`) is allowed. Comments (`--`, `/* */`) and text inside strings are handled separately. A query is blocked if `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `DROP`, `ALTER`, `CREATE`, `TRUNCATE`, `EXEC`, `DECLARE`, `SET`, `OPENROWSET`, `SELECT ... INTO`, `FOR UPDATE` or more than one statement appears anywhere in it. |
+| **DB session READ ONLY** | On MySQL, `SET SESSION TRANSACTION READ ONLY` runs right after connecting, so the server itself refuses any write even if the code has a bug. On SQL Server, every query runs inside a transaction that is always rolled back, never committed. |
+| **HTTP lock** | The browser may only use `GET` (the page), `POST` on the 7 read endpoints, and `POST` on the 3 local connection-save endpoints. Every other `POST`, and all `PUT`, `DELETE` and `PATCH` requests, get 405. The save endpoints only write to the local `data/connection.json` file, never to the database. |
 
-> **Read endpoint POST keno?** `/api/connect`, `/api/tables`, `/api/columns`, `/api/cash-slips` DB-r username ar password request-er body-te niye jay. GET hole password URL-e boshto, ar URL browser history ar server log-e theke jay. Ei 4 ta endpoint shudhu DB theke pore, kichu save kore na.
+> **Why do the read endpoints use POST?** `/api/connect`, `/api/tables`, `/api/columns`, `/api/salary-source`, `/api/cash-slips`, `/api/query-slips` and `/api/distinct-values` carry the DB username and password in the request body. With GET, the password would sit in the URL, which ends up in browser history and server logs. These 7 endpoints only read from the database and save nothing.
 
-**Aro nirapod korte:** DBA-ke diye ekta **SELECT-only user** baniye nin, ar shei user diye connect korun. Tahole app-er code bodlaleo kichu lekha jabe na:
+**For extra safety:** ask your DBA to create a **SELECT-only user** and connect with it. Then nothing can be written even if the app code changes:
+
+SQL Server (your salary DB):
+```sql
+CREATE LOGIN payroll_reader WITH PASSWORD = '...';
+USE YourSalaryDb;
+CREATE USER payroll_reader FOR LOGIN payroll_reader;
+ALTER ROLE db_datareader ADD MEMBER payroll_reader;
+```
+MySQL:
 ```sql
 CREATE USER 'payroll_reader'@'%' IDENTIFIED BY '...';
 GRANT SELECT ON payroll_db.* TO 'payroll_reader'@'%';
 ```
 
-**Error gulo warning:** data anar shomoy kono shomossa hole (connection, login, bhul table, ratio file nei, read-only block) holud **⚠ Warning** box-e dekhay. Server console-eo `[warning]` hishebe log hoy. Kichu lekha hoy na bole failed read-e DB-r kono khoti hoy na.
+**Errors are shown as warnings:** any problem while fetching data (connection, login, wrong table, missing ratio file, read-only block) appears in a yellow **⚠ Warning** box and is logged as `[warning]` in the server console. Because nothing is written, a failed read cannot harm the database.
 
 ---
 
-## 1. Prothombar setup (ekbar-i korte hobe)
+## 1. First-time setup (once)
 
-**Dorkar:** Node.js 18 ba tar beshi version, ar Windows PowerShell.
+**Requirements:** Node.js 18 or later, and Windows PowerShell.
 
-1. Package install korun:
+1. Install the packages:
    ```bash
    npm install
    ```
-2. Reference Excel-ta `docs/EmployeeCashRatio_Reference.xlsx` path-e rakhun.
-3. Excel theke ratio file banan:
+2. Put the reference Excel at `docs/EmployeeCashRatio_Reference.xlsx`.
+3. Build the ratio file from the Excel:
    ```bash
    powershell -ExecutionPolicy Bypass -File scripts/build-cash-ratios.ps1
    ```
-   Thik moto chole gele erokom message ashbe: `Wrote 383 employee ratios and 20 designation ratios to ...data\cash_ratios.json`.
-   Ei file-e shudhu EmployeeCode, Designation ar ratio thake. Name ba salary thake na.
+   On success you will see a message like `Wrote 383 employee ratios and 20 designation ratios to ...data\cash_ratios.json`.
+   This file holds only EmployeeCode, Designation and ratio. No names or salaries.
 
-> Reference Excel update hole step 3 abar chalaben. Server restart korte hobe na, notun file nije theke load hoye jay.
+> Run step 3 again whenever the reference Excel is updated. No server restart is needed; the new file is loaded automatically.
 
 ---
 
-## 2. App chalano
+## 2. Run the app
 
 ```bash
 npm start
 ```
 
-Browser-e kholun: http://localhost:3000
+Open http://localhost:3000 in your browser.
 
 ---
 
-## 3. Cash slip banano: puro flow
+## 3. Making cash slips: the full flow
 
 ### Step 1: Connect
-Bam dike **Connection** form-e eigulo din:
-- **Database engine:** MySQL
-- **Host / IP**, **Port** (MySQL-er default 3306), **Username**, **Password**
-- **Database name:** jana thakle likhun, sorasori table-er list ashbe. Na jana thakle khali rakhun, shob database-er list ashbe.
+Fill in the **Connection** form on the left:
+- **Database engine:** **SQL Server (MSSQL)**. The salary tables are on SQL Server (`dbo` schema).
+- **Host / IP**, **Port** (SQL Server default is 1433), **Username**, **Password**
+- **Database name:** if you know it, type it and the table list loads directly. Otherwise leave it empty to list all databases.
 
-Prothombar **Save this connection** checkbox-e tick din, tarpor **Connect** chapun.
+The first time, tick **Save this connection**, then click **Connect**.
 
-#### Connection save ar auto-connect
-- Tick dewa obosthay connect **shofol** hole connection save hoy. Bhul password save hoy na.
-- Erpor theke `npm start` kore page khullei:
-  1. form nije theke bhore jay,
-  2. connect hoy,
-  3. sesh bar je database ar table khulechilen, seta-o nije theke khule jay (Table details ar Cash slips panel soho).
-  Apnake shudhu **Calculate cash part** chapte hobe.
-- **Kotha-y save hoy:** shudhu ei PC-r `data/connection.json`-e (git-ignored). Password **Windows DPAPI** diye encrypt kora thake. Shudhu apnar Windows user ei PC-tei eta khulte pare, onno PC-te copy korle kaj korbe na.
-- Password kokhono browser-e ferot ashe na. Password box-e `•••••• saved (encrypted)` dekhabe. Auto-connect-er shomoy server nije saved password boshiye ney.
-- **Password bodle gele:** auto-connect-e ⚠ Authentication warning ashbe. Password box-e notun password likhe Connect chapun, notun-ta save hoye jabe.
-- **Onno server-e jete:** host, user ba password bodlan. Tahole saved-ta use hobe na, notun details diye connect hobe. Tick thakle notun-ta save hobe.
-- **Muche felte:** **Forget saved connection** chapun. Athoba tick tule diye connect korun.
+#### Saved connection and auto-connect
+- With the box ticked, the connection is saved only when the connect **succeeds**, so a wrong password is never saved.
+- From then on, after `npm start`, opening the page will:
+  1. fill in the form,
+  2. connect,
+  3. reopen the database and table you had open last time. The Cash slips panel also remembers the last salary month you chose.
 
-### Step 2: Database select
-**Databases** list theke payroll-er database-e click korun. Daan dike tar table-er list ashbe.
+  You only need to click **Calculate cash part**.
+- **Where it is saved:** only on this PC, in `data/connection.json` (git-ignored). The password is encrypted with **Windows DPAPI**: only your Windows user on this PC can decrypt it. Copying the file to another PC will not work.
+- The password is never sent back to the browser. The password box shows `•••••• saved (encrypted)`, and the server fills in the saved password itself when auto-connecting.
+- **If the password changes:** auto-connect shows a ⚠ Authentication warning. Type the new password and click Connect; the new one is saved.
+- **To use another server:** change the host, user or password. The saved connection is then not used and the new details are used instead. If the box is ticked, the new connection is saved.
+- **To remove it:** click **Forget saved connection**, or untick the box and connect.
 
-### Step 3: Payroll table khuje ber kora
-Table-er naam jana na thakleo cholbe:
-- Kono table-e click korun. **Table details**-e column-er list ar row count dekhabe.
-- Payroll table chenar upay: tate `EmployeeCode`, `Designation`, `Gross`, `DOJ` column thakbe (`docs/database_scema.xlsx` dekhun). Row count prai employee shonkhar soman hobe.
-- Bhul table-e click korleo kono khoti nei. App shudhu pore, kichu lekhe na. Calculate chaple bole debe kon column nei.
+### Step 2: Select the database
+Click the salary database in the **Databases** list. Its tables appear on the right.
 
-### Step 4: Cash part calculate
-Table select korle niche **Cash slips** panel ashbe.
-1. **Cut-off date:** default `2026-09-01`. Onno mash-er jonno bodlate paren.
-2. **Calculate cash part** chapun.
+If the database has both `MonthWiseSalaryInfo` and `MonthWiseSalaryInfoExt`, the **Cash slips — MonthWiseSalaryInfo + Ext** panel appears below automatically. You do not need to click a table. If either table is missing, the panel shows a yellow ⚠ warning.
 
-Hishab hoye gele upore summary dekhabe:
-| Box | Mane |
+> Clicking a table only shows its columns and row count (Table details). It has no effect on the cash slip calculation.
+
+### Step 3: Choose the month and calculate
+1. **Salary month (SalaryProcID):** the dropdown lists the months found in the database with their row counts, newest first. Pick the month you need slips for. The app remembers your choice.
+2. **Cut-off date:** defaults to `2026-09-01`. It decides who falls under the 60k rule and who falls under the 100k rule.
+3. Click **Calculate cash part**.
+
+The app joins the two tables on `EmployeeCode` + `SalaryProcID` and fetches only the rows for the selected month:
+- **From `MonthWiseSalaryInfo`:** `OrgGross`, `OrgBasic`, `OrgHouseRent`, `OrgMedical`, `OrgConvence`.
+- **From `MonthWiseSalaryInfoExt`:** `DisplayEmployeeCode`, `EmployeeName`, `DOJ`, `DOS`, and Designation/Department/Unit if present.
+
+The designation column is found automatically if it is named `Designation`, `DesignationName` or `Desig`. If none is found you get a warning, and the designation fallback is turned off.
+
+When the calculation finishes, a summary appears at the top:
+| Box | Meaning |
 |---|---|
-| rows read | table-e mot koto row |
-| pass threshold | koto jon salary-r shorto puron korche |
-| with cash | koto jon-er cash > 0 |
-| total cash / total bank | mot koto taka |
+| rows read | total rows for that month |
+| pass threshold | how many meet the OrgGross condition |
+| with cash | how many have cash > 0 |
+| total cash / total bank | total amounts |
 
-Status line-e dekhabe kar ratio kotha theke esheche, ar ke keno baad porlo. Niche **"Ratio status-e ki dekhben"** section-ta poren.
+The status line shows where each ratio came from and why people were excluded. If an employee has two rows in the same month, only the first is used and the code is listed in the warning. See **"Reading the ratio status"** below.
 
-### Step 5: Check kora
-Table-e protyek employee-r Gross, Ratio, Source, Bank, Cash ar Net bank dekhabe.
-- **Only employees with cash > 0:** tick thakle shudhu jader cash ache tara dekhabe. Tick tule dile ratio 1.0-er lok-o dekhabe.
-- **Calculation trace:** kono row-e click korle niche oi employee-r puro hishab step by step khulbe. Ei trace shudhu screen-e dekha jay, print-e ashe na.
-  1. **Cash pabe kina:** DOJ, cut-off, threshold, Gross, DOS.
-  2. **Ratio khoja:** EmployeeCode, DisplayEmployeeCode ar Designation, kon-ta try hoyeche ar kon-ta mileche. Exact ratio-o dekhay.
-  3. **Bank ar cash:** `Gross ÷ Ratio`-er round korar ager value, round-er por value, ar cash.
-  4. **Vag onujayi breakdown:** protyek vag-er %, bank, cash, kivabe hishab holo, ar Basic-e round-er baki koto boshlo.
-  5. **Deduction:** kon column-e koto. `TotalDeductionsListed`-er sathe column gulor jogfol na mille ⚠ dekhabe.
-  6. **Check:** Bank + Cash = Gross kina, ar employee hate mot koto pabe.
+### Step 4: Check the results
+The table shows each employee's OrgGross, Ratio, Source, Bank and Cash.
+- **Only employees with cash > 0:** when ticked, only employees with cash are shown. Untick it to also see employees with ratio 1.0.
+- **Calculation trace:** click any row to open that employee's full calculation, step by step. The trace is shown on screen only and never printed.
+  1. **Eligibility:** DOS, DOJ, cut-off, threshold, OrgGross.
+  2. **Ratio lookup:** which of EmployeeCode, DisplayEmployeeCode and Designation was tried and which matched, plus the exact ratio.
+  3. **Bank / cash split:** `OrgGross ÷ Ratio` before and after rounding, and the cash.
+  4. **Breakdown by component:** the % of OrgBasic/OrgHouseRent/OrgMedical/OrgConvence, bank, cash, how each was calculated, and the remainder added to Basic. A ⚠ appears if the Org components do not add up to OrgGross.
+  5. **Check:** whether Bank + Cash = OrgGross, and the 4 amounts that go on the slip.
 
-### Step 6: Output
-- **Download CSV:** puro breakdown ashbe (bank ar cash duto-i, ratio soho). Excel-e khule check korun. Ei file **internal**, kauke deben na.
-- **Print slips:** notun window-e slip khulbe ar print dialog ashbe. Protyek slip-e shudhu **cash part** thake. Ratio ba bank-er hishab slip-e thake na. PDF chaile print dialog-e "Save as PDF" select korun.
+### Step 5: Output
+- **Download CSV:** the full breakdown (SalaryProcID, both bank and cash, with ratio). Open it in Excel to check. This file is **internal**; do not give it to anyone.
+- **Print slips:** opens the slips in a new window with the print dialog. Each slip shows:
+  - the employee's details and Salary ref. (SalaryProcID),
+  - **Cash Basic, Cash House Rent, Cash Medical, Cash Conveyance** and **Gross Cash**.
 
-> Pop-up block thakle Print kaj korbe na. Browser-e `localhost:3000`-er jonno pop-up allow korun.
+  The ratio and the bank part are not on the slip. For a PDF, choose "Save as PDF" in the print dialog.
+
+> Printing does not work if pop-ups are blocked. Allow pop-ups for `localhost:3000` in your browser.
+
+### Cash slips by manual mapping (no SQL needed)
+Use this when your table or column names differ from the defaults, or when a field such as Designation lives in another table. After you select a database, the **Cash slips by manual mapping** panel appears below Cash slips.
+
+1. **Tables:** pick the **Salary table** and the **Employee table**. If `MonthWiseSalaryInfo` and `MonthWiseSalaryInfoExt` exist, they are selected already.
+2. **Keys:** the **Employee key** (e.g. `EmployeeCode = EmployeeCode`) and the **Month key** (e.g. `SalaryProcID = SalaryProcID`) are filled in when the names match. If the employee table has no month column, choose "(employee table has no month column)".
+3. **Fields:** the panel lists everything the calculation needs: **9 required fields** (marked `*`), plus DOS (recommended, to exclude inactive employees), Display code and Department (optional). For each field, pick the table (`s` salary, `e` employee, `x1`… added tables) and the column. Columns with matching names are picked automatically. A field that still needs a column is highlighted yellow and marked **needs a column**, and Run stays blocked until every required field is set.
+4. **+ Add table** (up to 3): when a field is in another table, for example Designation in a designation master table, add that table and set how it joins, e.g. `Employee table . DesignationID = DesignationID`. A shared column (preferably one ending in `ID`) is suggested automatically. Then set the field's table to `x1` and pick its column (e.g. `DesignationName`). Added tables use a LEFT JOIN, so employees are never dropped when a match is missing.
+5. **Salary month:** the list of values from the salary table's month column, newest first, with row counts.
+6. Click **Run**. The results table works exactly like the custom query's: checkboxes, calculation trace, **Download selected slips** and **Download selected CSV**.
+7. **Show SQL** shows the SELECT the app built. **Copy into the custom query box** puts it in the query panel, so you can adjust it or save it.
+
+The mapping is remembered per database. With a saved connection, everything is filled in again when you open the page; you only check the month and click **Run**. The app never runs it automatically, so you always confirm the month first.
+
+### Cash slips from a custom query
+After you select a database, the **Cash slips from a custom query** panel appears below the mapping panel. Use it to run your own SELECT query and make slips from the result, for example for one department, a few employees, or a different table.
+
+1. **Write the query.** The box starts with a **template**. Replace the placeholder names (`dbo.SalaryTableName`, `dbo.EmployeeTableName`, `'YOUR_SALARY_PROC_ID'`) with your own, or paste your own query. **Reset to template** brings the template back. The app remembers your last query.
+2. **Use SQL Server syntax** (`TOP`, `[ ]`). The result must contain these column names; rename with `AS` if needed:
+   `EmployeeCode, EmployeeName, Designation, OrgGross, OrgBasic, OrgHouseRent, OrgMedical, OrgConvence, DOJ, DOS`.
+   If you include `SalaryProcID`, it appears on the slip as "Salary ref.".
+3. Click **Run query**, or press `Ctrl+Enter`.
+4. **Errors** are shown as a yellow ⚠ warning:
+   - SQL mistakes show SQL Server's own message, e.g. `Invalid column name 'OrgGros'`.
+   - Any attempt to write shows "Blocked by read-only mode …". This is blocked before the app even connects to the database.
+   - Missing required columns show "missing column(s): …".
+   - More than 5,000 rows asks you to narrow the query with `WHERE`.
+5. **On success** the table shows only **eligible** employees. Order: anyone with a DOS is excluded, then OrgGross ≥ 60k/100k depending on DOJ. Columns: Employee ID, Name, Designation, OrgGross, Cash Basic, Cash House Rent, Cash Medical, Cash Conveyance, Total Cash. The status line counts who was excluded and why.
+6. **Checkboxes:** tick the employees whose slips you need, or use the header checkbox to select everyone. A count such as "2 selected of 5" is shown. Employees with ratio 1.0 have no cash, so their checkbox is disabled.
+7. **Download selected slips:** opens only the ticked employees' slips in a print window. "Save as PDF" gives one PDF with all of them. **Download selected CSV** exports the same employees to an Excel file.
+8. Clicking a row opens the **calculation trace**, as above.
 
 ---
 
-## 4. Hishab-er rule
+## 4. Calculation rules
 
-### Ke cash pabe (cut-off = 1 Sep 2026)
-| Shorto | Cash pabe jodi |
-|---|---|
-| DOJ cut-off-er **age** | Gross ≥ **60,000** |
-| DOJ cut-off-er **dine ba pore** | Gross ≥ **100,000** |
-| Gross 0 ba khali | baad |
-| DOS cut-off-er age (chole geche) | baad |
-| DOJ pora jacche na | baad (status-e code dekhabe) |
+### Who gets cash (checked in this order, cut-off = 1 Sep 2026)
+| # | Condition | Result |
+|---|---|---|
+| 1 | **Has a DOS** (any date) | not active, **excluded first** |
+| 2 | OrgGross is 0 or empty | excluded |
+| 2 | DOJ cannot be read | excluded (code shown in the status) |
+| 2 | DOJ **before** the cut-off | kept if OrgGross ≥ **60,000** |
+| 2 | DOJ **on or after** the cut-off | kept if OrgGross ≥ **100,000** |
+| 3 | Everyone left | bank/cash split by ratio |
 
-DOJ ei format gulo pora jay: `YYYY-MM-DD`, `DD-MM-YYYY`, `DD/MM/YYYY`.
+An empty DOS (`NULL`, blank or `0000-00-00`) counts as active.
 
-### Ratio kotha theke ashe (ei order-e khuje)
-1. **Employee:** `EmployeeCode` diye khuje, na mille `DisplayEmployeeCode` diye. Leading zero bad diye mile, tai `12` ar `00012` eki dhora hoy.
-2. **Designation:** employee-r nijer ratio na thakle designation-er average. Choto-boro haat, dot ar space-er parthokko dhore na, tai `Sr. Manager` ar `sr manager` eki.
-3. **Default 1.0:** kono-tai na mille ratio 1.0, mane cash 0.
+DOJ comes from SQL Server's `datetime`. Text dates in these formats are also read: `YYYY-MM-DD`, `DD-MM-YYYY`, `DD/MM/YYYY`.
 
-### Bank ar cash bhag
+### Where the ratio comes from (searched in this order)
+1. **Employee:** by `EmployeeCode`, then by `DisplayEmployeeCode`. Leading zeros are ignored, so `12` and `00012` match.
+2. **Designation:** if the employee has no ratio of their own, the designation average is used. Case, dots and extra spaces are ignored, so `Sr. Manager` and `sr manager` match.
+3. **Default 1.0:** if nothing matches, the ratio is 1.0, which means no cash.
+
+### Bank / cash split
 ```
-Gross   = actual gross (bank + cash)
-Bank    = round(Gross / ratio)
-Cash    = Gross - Bank
+OrgGross = MonthWiseSalaryInfo.OrgGross (the amount that is split)
+Bank     = round(OrgGross / ratio)
+Cash     = OrgGross - Bank
 ```
-Bank ar cash, duto-i Basic, House rent, Medical, Conveyance ar Other allowances-e bhag hoy. Gross-e protyek vag-er je onupat, sei onupatei bhag hoy. Round korar por ja baki thake, Basic-e jog hoy, tai jog kore total thik mile.
+The component shares come from the Org columns:
+```
+Basic %      = OrgBasic     / OrgGross
+HouseRent %  = OrgHouseRent / OrgGross
+Medical %    = OrgMedical   / OrgGross
+Conveyance % = OrgConvence  / OrgGross
+```
+- Cash House Rent, Cash Medical and Cash Conveyance = Cash × that component's % (rounded).
+- **Cash Basic** = Cash − the other 3. Both the rounding remainder and any gap between the Org components and OrgGross go to Basic, so the 4 components always add up to Gross Cash.
+- The bank part is split the same way.
 
-### Deduction
-- `TotalDeductionsListed` column thakle seta use hoy. Na thakle eigulo jog kora hoy: LunchDeduction, ExtraMobileBill, IncomeTax, PF, Stamp, FairShop, Advance, VehicleDeduction, OtherDeduction.
-- Deduction shudhu **bank part** theke kate: `Net bank = Bank − Deduction`. Cash part-e kono deduction nei.
+**Example** (OrgGross 1,00,000; Basic/HR/Medical/Conv = 60/30/6/4%; ratio 1.427061):
+
+| | Bank | Cash |
+|---|---:|---:|
+| Basic | 42,045 | 17,955 |
+| House Rent | 21,022 | 8,978 |
+| Medical | 4,204 | 1,796 |
+| Conveyance | 2,803 | 1,197 |
+| **Total** | **70,074** | **29,926** |
 
 ---
 
-## 5. Ratio status-e ki dekhben
+## 5. Reading the ratio status
 
-Calculate korar por status line ek bar poren:
-- **default 1.0** onek beshi hole: employee code ba designation-er banan reference file-er sathe milche na. CSV-te `RatioSource = default` row gulo dekhun.
-- **designation** beshi hole: notun join kora lok ba reference-er scope-er baire-r lok (reference-e shudhu Corporate MS staff ache). Eta swabhabik, tobu ek bar check kore niben.
-- **unreadable DOJ:** oi employee-der DOJ DB-te thik korte hobe, noile tara baad thakbe.
+After calculating, read the status line once:
+- **Many "default 1.0":** employee codes or designation spellings do not match the reference file. Check the rows with `RatioSource = default` in the CSV.
+- **Many "designation":** new joiners, or people outside the reference scope (the reference covers only Corporate MS staff). This is expected, but worth a quick check.
+- **unreadable DOJ:** fix those employees' DOJ in the database, otherwise they stay excluded.
+- **duplicate rows:** an employee has two rows in the same month. Only the first was used. Check the database.
 
 ---
 
-## 6. Somossa hole
+## 6. Troubleshooting
 
-| Message | Ki korben |
+| Message | What to do |
 |---|---|
-| `Cash ratio file data/cash_ratios.json is missing` | Section 1-er step 3 chalan |
-| `Table "..." is missing column(s) ...` | Bhul table. Onno table select korun |
-| `Authentication failed` | Username ba password bhul |
-| `Connection refused` / `timed out` | Host, port ba firewall check korun |
-| Print window khule na | Browser-e pop-up allow korun |
-| Auto-connect-e `Authentication failed` | Saved password bodle geche. Notun password likhe Connect chapun |
-| `Could not save the connection: DPAPI failed` | PowerShell block kora ache. IT-ke janan, ba save chara connect korun |
+| `Cash ratio file data/cash_ratios.json is missing` | Run step 3 of section 1 |
+| `This database has no MonthWiseSalaryInfo + MonthWiseSalaryInfoExt` | Wrong database. Select the salary database |
+| `Required columns are missing` | The warning lists which column is missing from which table |
+| `No Designation column found` | Designation fallback is off. Employees without their own ratio get no cash |
+| `No rows for SalaryProcID ...` | No matching data for that month in the two tables. Pick another month |
+| Mapping: `Required field(s) still need a column: ...` | Pick a column for the yellow fields. If the data is in another table, use **+ Add table** |
+| Mapping: `An added table is missing its table or join columns` | Finish the added table row (table and both join columns), or remove it |
+| `Invalid column name ...` / `Invalid object name ...` in the Query box | A placeholder column or table name in the template was not replaced, or is misspelled |
+| `missing column(s): ...` in the Query box | The query ran, but the result lacks that name. Rename with `AS` |
+| `more than 5,000 rows` in the Query box | Narrow it with `WHERE`, e.g. one SalaryProcID or department |
+| `Authentication failed` | Wrong username or password |
+| `Connection refused` / `timed out` | Check the host, port or firewall |
+| Print window does not open | Allow pop-ups in your browser |
+| `Authentication failed` on auto-connect | The saved password changed. Type the new password and click Connect |
+| `Could not save the connection: DPAPI failed` | PowerShell is blocked. Contact IT, or connect without saving |
 
 ---
 
-## 7. File gulo
+## 7. Files
 
-| File | Kaj |
+| File | Purpose |
 |---|---|
-| `server.js` | Express server. API: `/api/connect`, `/api/tables`, `/api/columns`, `/api/cash-slips` |
-| `cash-slip.js` | Eligibility, ratio lookup ar bank/cash bhag-er hishab |
-| `public/index.html` | UI: connection, table browse, Cash slips panel, CSV, print |
-| `saved-connection.js` | Connection save, DPAPI encrypt/decrypt, sesh khola table mone rakha |
-| `scripts/build-cash-ratios.ps1` | Reference Excel theke `data/cash_ratios.json` banay |
-| `docs/` | Reference Excel ar schema (confidential, git-ignored) |
-| `data/` | Ratio JSON ar `connection.json` (saved connection, encrypted password). Confidential, git-ignored |
+| `server.js` | Express server. API: `/api/connect`, `/api/tables`, `/api/columns`, `/api/salary-source`, `/api/cash-slips`, `/api/query-slips`, `/api/distinct-values`. Contains the read-only guard |
+| `salary-source.js` | Finds MonthWiseSalaryInfo + Ext, matches columns, builds the join query and the month list |
+| `cash-slip.js` | Eligibility, ratio lookup and the bank/cash split |
+| `public/index.html` | UI: connection, table browsing, Cash slips panel, manual mapping, custom query, CSV, print |
+| `saved-connection.js` | Saved connection, DPAPI encrypt/decrypt, remembers the last opened table |
+| `scripts/build-cash-ratios.ps1` | Builds `data/cash_ratios.json` from the reference Excel |
+| `docs/` | Reference Excel and table screenshots (confidential, git-ignored) |
+| `data/` | Ratio JSON and `connection.json` (saved connection, encrypted password). Confidential, git-ignored |
