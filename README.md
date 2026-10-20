@@ -161,7 +161,7 @@ The table shows each employee's OrgGross, Ratio, Source, Actual gross, Bank and 
 - **Calculation trace:** click any row to open that employee's full calculation, step by step. The trace is shown on screen only and never printed.
   1. **Eligibility:** DOS, DOJ, cut-off, threshold, and the actual gross it is compared with.
   2. **Ratio lookup:** which of EmployeeCode, DisplayEmployeeCode and Designation was tried and which matched, plus the exact ratio.
-  3. **Bank / cash split:** Bank = OrgGross; Actual = `OrgGross × Ratio` before and after rounding; Cash = Actual − OrgGross.
+  3. **Bank / cash split:** Bank = OrgGross; ***Actual = `OrgGross × Ratio`*** before and after rounding; ***Cash = Actual − OrgGross***.
   4. **Breakdown by component:** the % of OrgBasic/OrgHouseRent/OrgMedical/OrgConvence, bank, cash, how each was calculated, and the remainder added to Basic. A ⚠ appears if the Org components do not add up to OrgGross.
   5. **Check:** whether Bank + Cash = Actual gross, and the 4 amounts that go on the slip.
 

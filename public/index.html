@@ -168,6 +168,9 @@
     .cash-actions .check { margin-top: 0; }
     .cash-actions .spacer { flex: 1; }
     .cash-actions button { width: auto; margin-top: 0; padding: 8px 16px; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .panel-head h2 { margin: 0; }
+    .panel-head button { width: auto; margin-top: 0; padding: 6px 14px; }
     button.secondary { background: var(--accent-soft); color: var(--accent); }
     button.secondary:hover { background: var(--accent-soft); outline: 1px solid var(--accent); }
     th.r, td.r { text-align: right; font-variant-numeric: tabular-nums; }
@@ -378,7 +381,10 @@
 
             <div class="stack">
               <div class="panel">
-                <h2 id="tables-title">Tables</h2>
+                <div class="panel-head">
+                  <h2 id="tables-title">Tables</h2>
+                  <button type="button" id="export-btn" class="secondary hidden" title="Download the CREATE TABLE script for every table in this database (structure only, no data)">Export</button>
+                </div>
                 <p id="tables-meta" class="meta hidden"></p>
                 <div id="tables-wrap" class="table-wrap hidden">
                   <table>
@@ -578,6 +584,7 @@
     const tablesEmpty = $('tables-empty');
     const tablesMeta = $('tables-meta');
     const tablesTitle = $('tables-title');
+    const exportBtn = $('export-btn');
     const detailPanel = $('detail-panel');
     const detailTitle = $('detail-title');
     const detailStats = $('detail-stats');
@@ -744,6 +751,7 @@
       showMappingPanel(null);
       tablesWrap.classList.add('hidden');
       tablesMeta.classList.add('hidden');
+      exportBtn.classList.add('hidden');
       tablesTitle.textContent = 'Tables';
       tablesEmpty.textContent = message;
       tablesEmpty.classList.remove('hidden');
@@ -898,6 +906,7 @@
         tablesMeta.classList.remove('hidden');
         tablesEmpty.classList.add('hidden');
         tablesWrap.classList.remove('hidden');
+        exportBtn.classList.remove('hidden');
         resetDetail(true);
         return true;
       } catch (err) {
@@ -908,6 +917,44 @@
         return false;
       }
     }
+
+    /** Downloads the structure-only CREATE TABLE script of the open database. */
+    async function exportSchema() {
+      if (!session || !session.database) return;
+      const dbName = session.database;
+      exportBtn.disabled = true;
+      exportBtn.textContent = 'Exporting…';
+      try {
+        let res;
+        try {
+          res = await fetch('/api/export-schema', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(session),
+          });
+        } catch (e) {
+          throw { message: 'Could not reach the DB Explorer backend. Is `npm start` still running?', detail: e.message };
+        }
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw (data && data.error) || { message: `Export failed with HTTP ${res.status}` };
+        }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${safeName(dbName)}_schema.sql`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        showStatus('ok', `Exported the schema of "${dbName}" (structure only, no data).`);
+      } catch (err) {
+        showStatus('warn', err.message || 'Schema export failed.', err.detail);
+        console.warn(`[DB Explorer] Schema export for "${dbName}" failed:`, err);
+      } finally {
+        exportBtn.disabled = false;
+        exportBtn.textContent = 'Export';
+      }
+    }
+    exportBtn.addEventListener('click', exportSchema);
 
     function stat(value, label) {
       const d = document.createElement('div');

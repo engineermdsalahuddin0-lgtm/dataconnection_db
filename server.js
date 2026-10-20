@@ -23,7 +23,7 @@ const SYSTEM_DBS = {
 // The read endpoints use POST only so DB credentials travel in the request body,
 // not in the URL (where they would land in browser history and logs). Nothing
 // else may be posted, and no other write-style method is accepted at all.
-const READ_ENDPOINTS = new Set(['/api/connect', '/api/tables', '/api/columns', '/api/salary-source', '/api/cash-slips', '/api/query-slips', '/api/distinct-values', '/api/run-query']);
+const READ_ENDPOINTS = new Set(['/api/connect', '/api/tables', '/api/columns', '/api/export-schema','/api/salary-source', '/api/cash-slips', '/api/query-slips', '/api/distinct-values', '/api/run-query']);
 // These write ONLY to local files in data/ (saved connection, saved queries), never to the database.
 const LOCAL_SETTINGS_ENDPOINTS = new Set(['/api/saved-connection', '/api/saved-connection/last', '/api/saved-connection/forget', '/api/saved-queries/save', '/api/saved-queries/delete']);
 const POST_ALLOWED = new Set([...READ_ENDPOINTS, ...LOCAL_SETTINGS_ENDPOINTS]);
@@ -537,6 +537,183 @@ app.post('/api/columns', async (req, res) => {
     console.table(columns);
 
     res.json({ ok: true, database: c.database, schema, table, rowCount, rowCountError, columns });
+  } catch (err) {
+    sendError(res, err, c);
+  }
+});
+
+/*
+ * Schema-only export. The CREATE TABLE script is assembled here from INFORMATION_SCHEMA
+ * reads (SHOW CREATE / sp_helptext would trip the read-only guard), so no data is read
+ * and nothing is run on the server except SELECTs.
+ */
+function groupBy(rows, key) {
+  const m = new Map();
+  for (const r of rows) {
+    const k = key(r);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(r);
+  }
+  return m;
+}
+
+/** Groups key-column rows into constraints: { name, table, columns, refTable, refColumns, rule }. */
+function constraintsOf(rows) {
+  return [...groupBy(rows, (r) => `${r.tbl}\0${r.cname}`).values()].map((cols) => ({
+    name: cols[0].cname,
+    table: cols[0].tbl,
+    columns: cols.map((r) => r.col),
+    refTable: cols[0].ref_tbl,
+    refColumns: cols.map((r) => r.ref_col),
+    onDelete: cols[0].del_rule,
+    onUpdate: cols[0].upd_rule,
+  }));
+}
+
+function buildSchemaScript(c, { tables, columns, keys, uniques, fks }, q) {
+  const cols = groupBy(columns, (r) => r.tbl);
+  const pk = new Map(constraintsOf(keys).map((k) => [k.table, k]));
+  const uq = groupBy(constraintsOf(uniques), (k) => k.table);
+  const rule = (r) => (r && r !== 'NO ACTION' && r !== 'RESTRICT' ? r : null);
+
+  const out = [
+    `-- Schema export of ${c.engine === 'mysql' ? 'MySQL' : 'SQL Server'} database "${c.database}" on ${c.host}:${c.port}`,
+    `-- ${tables.length} table(s), structure only (no data). Generated ${new Date().toISOString()}`,
+    '',
+  ];
+  for (const t of tables) {
+    const lines = (cols.get(t.tbl) || []).map((col) => {
+      let s = `  ${q(col.name)} ${col.type}`;
+      if (col.extra) s += ` ${col.extra}`;
+      s += col.nullable === 'YES' ? ' NULL' : ' NOT NULL';
+      if (col.dflt != null) s += ` DEFAULT ${col.dflt}`;
+      return s;
+    });
+    const p = pk.get(t.tbl);
+    if (p) lines.push(`  CONSTRAINT ${q(p.name)} PRIMARY KEY (${p.columns.map(q).join(', ')})`);
+    for (const u of uq.get(t.tbl) || []) lines.push(`  CONSTRAINT ${q(u.name)} UNIQUE (${u.columns.map(q).join(', ')})`);
+    out.push(`CREATE TABLE ${t.label} (`, lines.join(',\n'), ');', '');
+  }
+
+  const foreign = constraintsOf(fks);
+  if (foreign.length) out.push('-- Foreign keys', '');
+  for (const f of foreign) {
+    let s = `ALTER TABLE ${f.table} ADD CONSTRAINT ${q(f.name)} FOREIGN KEY (${f.columns.map(q).join(', ')}) ` +
+      `REFERENCES ${f.refTable} (${f.refColumns.map(q).join(', ')})`;
+    if (rule(f.onDelete)) s += ` ON DELETE ${f.onDelete}`;
+    if (rule(f.onUpdate)) s += ` ON UPDATE ${f.onUpdate}`;
+    out.push(s + ';');
+  }
+  return out.join('\n') + '\n';
+}
+
+// Endpoint 4: CREATE TABLE script (structure only) for every base table in a database.
+app.post('/api/export-schema', async (req, res) => {
+  let c;
+  try {
+    c = parseCredentials(await savedConnection.resolve(req.body || {}), { requireDatabase: true });
+
+    let script;
+    if (c.engine === 'mysql') {
+      const q = (s) => mysql.escapeId(String(s));
+      script = await withMysql(c, async (conn) => {
+        const db = [c.database];
+        const [tables] = await conn.query(
+          `SELECT TABLE_NAME AS tbl FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`, db);
+        const [columns] = await conn.query(
+          `SELECT TABLE_NAME AS tbl, COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable,
+                  COLUMN_DEFAULT AS dflt, DATA_TYPE AS dtype, EXTRA AS extra
+             FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION`, db);
+        const keyCols = (type) => conn.query(
+          `SELECT k.TABLE_NAME AS tbl, k.CONSTRAINT_NAME AS cname, k.COLUMN_NAME AS col
+             FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS t
+             JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+               ON k.CONSTRAINT_SCHEMA = t.CONSTRAINT_SCHEMA AND k.TABLE_NAME = t.TABLE_NAME AND k.CONSTRAINT_NAME = t.CONSTRAINT_NAME
+            WHERE t.TABLE_SCHEMA = ? AND t.CONSTRAINT_TYPE = ? ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION`,
+          [c.database, type]).then(([r]) => r);
+        const [fks] = await conn.query(
+          `SELECT k.TABLE_NAME AS tbl, k.CONSTRAINT_NAME AS cname, k.COLUMN_NAME AS col,
+                  k.REFERENCED_TABLE_NAME AS ref_tbl, k.REFERENCED_COLUMN_NAME AS ref_col,
+                  r.DELETE_RULE AS del_rule, r.UPDATE_RULE AS upd_rule
+             FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+             JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS r
+               ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+            WHERE k.TABLE_SCHEMA = ? ORDER BY k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION`, db);
+
+        const textual = /char|text|enum|set|date|time|year|binary|blob|json/i;
+        return buildSchemaScript(c, {
+          tables: tables.map((t) => ({ ...t, label: q(t.tbl) })),
+          columns: columns.map((col) => ({
+            ...col,
+            // MySQL reports defaults unquoted; quote literal values, keep expressions as-is.
+            dflt: col.dflt == null ? null
+              : /^(CURRENT_TIMESTAMP|NULL)\b/i.test(col.dflt) ? col.dflt
+              : /DEFAULT_GENERATED/.test(col.extra) ? `(${col.dflt})`
+              : textual.test(col.dtype) ? mysql.escape(col.dflt) : col.dflt,
+            extra: String(col.extra || '').replace(/\bDEFAULT_GENERATED\b/i, '').trim(),
+          })),
+          keys: await keyCols('PRIMARY KEY'),
+          uniques: await keyCols('UNIQUE'),
+          fks: fks.map((f) => ({ ...f, tbl: q(f.tbl), ref_tbl: q(f.ref_tbl) })),
+        }, q);
+      });
+    } else {
+      const q = (s) => `[${String(s).replace(/]/g, ']]')}]`;
+      script = await withMssql(c, async (pool) => {
+        const run = async (text) => (await pool.request().query(text)).recordset;
+        // tbl is always the bracketed schema.table, so names line up across the queries.
+        const tables = await run(
+          `SELECT QUOTENAME(TABLE_SCHEMA) + '.' + QUOTENAME(TABLE_NAME) AS tbl FROM INFORMATION_SCHEMA.TABLES
+            WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME`);
+        const columns = await run(
+          `SELECT QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME) AS tbl, c.COLUMN_NAME AS name, c.DATA_TYPE,
+                  c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.DATETIME_PRECISION,
+                  c.IS_NULLABLE AS nullable, c.COLUMN_DEFAULT AS dflt,
+                  ic.seed_value, ic.increment_value
+             FROM INFORMATION_SCHEMA.COLUMNS c
+             LEFT JOIN sys.identity_columns ic
+               ON ic.object_id = OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)) AND ic.name = c.COLUMN_NAME
+            ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION`);
+        const keyCols = (type) => run(
+          `SELECT QUOTENAME(k.TABLE_SCHEMA) + '.' + QUOTENAME(k.TABLE_NAME) AS tbl, k.CONSTRAINT_NAME AS cname, k.COLUMN_NAME AS col
+             FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS t
+             JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+               ON k.CONSTRAINT_SCHEMA = t.CONSTRAINT_SCHEMA AND k.CONSTRAINT_NAME = t.CONSTRAINT_NAME
+            WHERE t.CONSTRAINT_TYPE = '${type}' ORDER BY k.TABLE_SCHEMA, k.TABLE_NAME, k.CONSTRAINT_NAME, k.ORDINAL_POSITION`);
+        const fks = await run(
+          `SELECT QUOTENAME(SCHEMA_NAME(f.schema_id)) + '.' + QUOTENAME(OBJECT_NAME(f.parent_object_id)) AS tbl,
+                  f.name AS cname, COL_NAME(fc.parent_object_id, fc.parent_column_id) AS col,
+                  QUOTENAME(OBJECT_SCHEMA_NAME(f.referenced_object_id)) + '.' + QUOTENAME(OBJECT_NAME(f.referenced_object_id)) AS ref_tbl,
+                  COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS ref_col,
+                  REPLACE(f.delete_referential_action_desc, '_', ' ') AS del_rule,
+                  REPLACE(f.update_referential_action_desc, '_', ' ') AS upd_rule
+             FROM sys.foreign_keys f
+             JOIN sys.foreign_key_columns fc ON fc.constraint_object_id = f.object_id
+            ORDER BY tbl, f.name, fc.constraint_column_id`);
+
+        return buildSchemaScript(c, {
+          tables: tables.map((t) => ({ ...t, label: t.tbl })),
+          columns: columns.map((col) => {
+            const t = col.DATA_TYPE;
+            // text/ntext/image/xml report a length but take none in DDL.
+            let type = ['text', 'ntext', 'image', 'xml'].includes(t) ? t : mssqlTypeLabel(col);
+            if (['datetime2', 'time', 'datetimeoffset'].includes(t) && col.DATETIME_PRECISION != null) type = `${t}(${col.DATETIME_PRECISION})`;
+            if (['float'].includes(t) && col.NUMERIC_PRECISION != null && col.NUMERIC_PRECISION !== 53) type = `${t}(${col.NUMERIC_PRECISION})`;
+            return { ...col, type, extra: col.seed_value != null ? `IDENTITY(${col.seed_value},${col.increment_value})` : '' };
+          }),
+          keys: await keyCols('PRIMARY KEY'),
+          uniques: await keyCols('UNIQUE'),
+          fks,
+        }, q);
+      });
+    }
+
+    console.log(`\n[export-schema] ${c.engine} ${c.host}:${c.port} / ${c.database} — ${script.length} chars`);
+    const file = `${c.database.replace(/[^\w-]+/g, '_')}_schema.sql`;
+    res.set('Content-Type', 'application/sql; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${file}"`);
+    res.send(script);
   } catch (err) {
     sendError(res, err, c);
   }
